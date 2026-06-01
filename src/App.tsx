@@ -1,121 +1,281 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
+import { useMemo, useRef, useState } from 'react'
 import './App.css'
+import { localFoodCategories } from './data/localFoods'
+import { mockShops } from './data/mockShops'
+import type { RangeOption } from './types'
+
+// 検索半径の選択肢
+const rangeOptions: RangeOption[] = [
+  { value: '1', label: '300m' },
+  { value: '2', label: '500m' },
+  { value: '3', label: '1km' },
+  { value: '4', label: '2km' },
+  { value: '5', label: '3km' },
+]
+
+// 画面デザイン確認用の仮地域（都道府県判定処理は後で実装）
+const demoPrefecture = '福岡県'
+const detailPageSize = 7
 
 function App() {
-  const [count, setCount] = useState(0)
+  const detailSectionRef = useRef<HTMLElement | null>(null)
+  const [range, setRange] = useState('3')
+  const [visibleShopCount, setVisibleShopCount] = useState(detailPageSize)
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
+    null,
+  )
+
+  // 現在位置の取得状態
+  const [locationStatus, setLocationStatus] = useState<
+    'idle' | 'loading' | 'ready' | 'error'
+  >('idle')
+  const [locationMessage, setLocationMessage] = useState(
+    '現在地を取得すると、ご当地カテゴリを表示します。',
+  )
+
+  const displayedCategories = useMemo(
+    () =>
+      localFoodCategories.filter(
+        (category) => category.prefecture === demoPrefecture,
+      ),
+    [],
+  )
+
+  // 選択中のカテゴリ検索
+  const selectedCategory = localFoodCategories.find(
+    (category) => category.id === selectedCategoryId,
+  )
+
+  // カテゴリごとのおすすめ店舗をまとめる（現在はモックを使用）
+  const featuredShops = useMemo(
+    () =>
+      displayedCategories.map((category) => ({
+        category,
+        shops: mockShops
+          .filter((shop) => shop.categoryId === category.id)
+          .slice(0, 2),
+      })),
+    [displayedCategories],
+  )
+
+  const selectedShops = selectedCategoryId
+    ? mockShops.filter((shop) => shop.categoryId === selectedCategoryId)
+    : []
+  const visibleSelectedShops = selectedShops.slice(0, visibleShopCount)
+  const hasMoreSelectedShops = visibleShopCount < selectedShops.length
+
+  const handleSelectCategory = (categoryId: string, shouldScroll = false) => {
+    setSelectedCategoryId(categoryId)
+    setVisibleShopCount(detailPageSize)
+
+    // カテゴリ詳細まで自動スクロール
+    if (shouldScroll) {
+      window.requestAnimationFrame(() => {
+        detailSectionRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        })
+      })
+    }
+  }
+
+  // 現在地から探すボタンの処理（Geolocation APIが使用できるか確認）
+  const handleLocate = () => {
+    if (!navigator.geolocation) {
+      setLocationStatus('error')
+      setSelectedCategoryId(null)
+      setLocationMessage(
+        '現在地取得を利用できません。通常検索を使用してください。',
+      )
+      return
+    }
+
+    setLocationStatus('loading')
+    setLocationMessage('現在地を取得しています...')
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocationStatus('ready')
+        handleSelectCategory(displayedCategories[0]?.id ?? '')
+        setLocationMessage(
+          `現在地を取得しました。\n緯度: ${position.coords.latitude.toFixed(4)} / 経度: ${position.coords.longitude.toFixed(4)}\n今は${demoPrefecture}の仮カテゴリを表示しています。`,
+        )
+      },
+      () => {
+        setLocationStatus('error')
+        setSelectedCategoryId(null)
+        setLocationMessage(
+          '現在地を取得できませんでした。通常検索を使用してください。',
+        )
+      },
+      {
+        enableHighAccuracy: false, // 高精度GPSを必須にしない
+        timeout: 10000,
+        maximumAge: 300000,
+      },
+    )
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
+    <main className="app-shell">
+      <section className="hero-section">
+        <div className="hero-copy">
+          <p className="eyebrow">NearEats</p>
+          <h1>旅行先の食事を迷わずに</h1>
+          <p className="lead">
+            現在地周辺のご当地グルメを、料理カテゴリごとにわかりやすく探せます。
           </p>
         </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
+
+        {/* 検索半径を指定するプルダウン */}
+        <form className="search-panel">
+          <label className="field">
+            <span>検索半径</span>
+            <select value={range} onChange={(event) => setRange(event.target.value)}>
+              {rangeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          
+          {/* 現在地から探すボタン */}
+          <button
+            className="primary-button"
+            type="button"
+            onClick={handleLocate}
+            disabled={locationStatus === 'loading'}
+          >
+            {locationStatus === 'loading' ? '取得中...' : '現在地から探す'}
+          </button>
+
+          <button className="secondary-button" type="button">
+            通常検索に切り替える
+          </button>
+
+          {/* 現在地の状態 */}
+          <p className={`location-message ${locationStatus}`}>
+            {locationMessage}
+          </p>
+        </form>
+      </section>
+
+      {/* 現在位置を取得できたときのみカテゴリを表示 */}
+      {locationStatus === 'ready' ? (
+        <section className="category-section" aria-labelledby="local-food-heading">
+        <div className="section-heading">
+          <p className="eyebrow">{demoPrefecture}の候補</p>
+          <h2 id="local-food-heading">ご当地料理カテゴリ</h2>
+        </div>
+
+        {/* カテゴリ一覧 */}
+        <div className="category-grid">
+          {featuredShops.map(({ category, shops }) => (
+            <button
+              className="category-card"
+              type="button"
+              key={category.id}
+              aria-current={category.id === selectedCategoryId}
+              aria-pressed={category.id === selectedCategoryId}
+              onClick={() => handleSelectCategory(category.id, true)}
+            >
+              <div>
+                <p className="category-prefecture">{category.prefecture}</p>
+                <h3>{category.name}</h3>
+                <p>{category.description}</p>
+              </div>
+
+              {/* カテゴリに一致する店舗の表示（2件） */}
+              <div className="mini-shop-list">
+                {shops.map((shop) => (
+                  <div className="mini-shop" key={shop.id}>
+                    <img src={shop.imageUrl} alt={`${shop.name}の料理写真`} />
+                    <div>
+                      <strong>{shop.name}</strong>
+                      <span>{shop.access}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </button>
+          ))}
+        </div>
+      </section>
+      ) : null}
+
+      {/* カテゴリが選択されている場合のみ表示 */}
+      {selectedCategory ? (
+        <section
+          className="detail-section"
+          aria-labelledby="detail-heading"
+          ref={detailSectionRef}
         >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+        <div className="section-heading">
+          <p className="eyebrow">カテゴリ詳細</p>
+          <h2 id="detail-heading">{selectedCategory?.name}</h2>
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+        {/* カテゴリに一致する店舗の表示（7件） */}
+        <div className="shop-list">
+          {visibleSelectedShops.map((shop) => (
+            <article className="shop-card" key={shop.id}>
+              <img src={shop.imageUrl} alt={`${shop.name}の料理写真`} />
+              <div className="shop-card-body">
+                <div>
+                  <p className="shop-meta">
+                    {shop.genre} / {shop.budget}
+                  </p>
+                  <h3>{shop.name}</h3>
+                  <p>{shop.catchCopy}</p>
+                </div>
+
+                <dl className="shop-facts">
+                  <div>
+                    <dt>アクセス</dt>
+                    <dd>{shop.access}</dd>
+                  </div>
+                  <div>
+                    <dt>営業時間</dt>
+                    <dd>{shop.open}</dd>
+                  </div>
+                </dl>
+
+                <div className="shop-actions">
+                  <a href={shop.hotPepperUrl} target="_blank" rel="noreferrer">
+                    ホットペッパーで見る
+                  </a>
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                      shop.address,
+                    )}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    地図で開く
+                  </a>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        {hasMoreSelectedShops ? (
+          <div className="more-actions">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() =>
+                setVisibleShopCount((current) => current + detailPageSize)
+              }
+            >
+              もっと表示
+            </button>
+          </div>
+        ) : null}
+      </section>
+      ) : null}
+    </main>
   )
 }
 

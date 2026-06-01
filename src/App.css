@@ -1,184 +1,390 @@
-.counter {
-  font-size: 16px;
-  padding: 5px 10px;
-  border-radius: 5px;
-  color: var(--accent);
-  background: var(--accent-bg);
-  border: 2px solid transparent;
-  transition: border-color 0.3s;
-  margin-bottom: 24px;
-
-  &:hover {
-    border-color: var(--accent-border);
-  }
-  &:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
+/* 画面全体の背景。写真は使わず、旅の手帳っぽい紙色にしている */
+.app-shell {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #f9f8f6 0%, #efe9e3 100%);
 }
 
-.hero {
-  position: relative;
-
-  .base,
-  .framework,
-  .vite {
-    inset-inline: 0;
-    margin: 0 auto;
-  }
-
-  .base {
-    width: 170px;
-    position: relative;
-    z-index: 0;
-  }
-
-  .framework,
-  .vite {
-    position: absolute;
-  }
-
-  .framework {
-    z-index: 1;
-    top: 34px;
-    height: 28px;
-    transform: perspective(2000px) rotateZ(300deg) rotateX(44deg) rotateY(39deg)
-      scale(1.4);
-  }
-
-  .vite {
-    z-index: 0;
-    top: 107px;
-    height: 26px;
-    width: auto;
-    transform: perspective(2000px) rotateZ(300deg) rotateX(40deg) rotateY(39deg)
-      scale(0.8);
-  }
+/* 最初に表示するメインエリア。説明文と検索パネルを横並びにする */
+.hero-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 40px;
+  align-items: center;
+  width: min(1120px, calc(100% - 40px));
+  min-height: 380px;
+  margin: 0 auto;
+  padding: 56px 0 34px;
 }
 
-#center {
-  display: flex;
-  flex-direction: column;
-  gap: 25px;
-  place-content: center;
-  place-items: center;
-  flex-grow: 1;
-
-  @media (max-width: 1024px) {
-    padding: 32px 20px 24px;
-    gap: 18px;
-  }
+/* アプリ名、見出し、説明文のまとまり */
+.hero-copy {
+  max-width: 680px;
 }
 
-#next-steps {
-  display: flex;
-  border-top: 1px solid var(--border);
-  text-align: left;
-
-  & > div {
-    flex: 1 1 0;
-    padding: 32px;
-    @media (max-width: 1024px) {
-      padding: 24px 20px;
-    }
-  }
-
-  .icon {
-    margin-bottom: 16px;
-    width: 22px;
-    height: 22px;
-  }
-
-  @media (max-width: 1024px) {
-    flex-direction: column;
-    text-align: center;
-  }
+/* 小さな見出しラベル */
+.eyebrow {
+  margin: 0 0 10px;
+  color: #7b4f26;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
-#docs {
-  border-right: 1px solid var(--border);
-
-  @media (max-width: 1024px) {
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-  }
+.hero-copy h1,
+.section-heading h2 {
+  margin: 0;
+  color: #1f150c;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 700;
 }
 
-#next-steps ul {
-  list-style: none;
-  padding: 0;
-  display: flex;
+.hero-copy h1 {
+  max-width: 720px;
+  font-size: clamp(42px, 7vw, 76px);
+  line-height: 1.02;
+}
+
+.lead {
+  max-width: 560px;
+  margin: 24px 0 0;
+  color: #412d15;
+  font-size: 18px;
+  line-height: 1.8;
+}
+
+/* 検索条件を入れるパネル */
+.search-panel {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid rgba(65, 45, 21, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.92);
+  box-shadow: 0 18px 50px rgba(31, 21, 12, 0.14);
+}
+
+/* 入力欄のラベルとセレクトボックス */
+.field {
+  display: grid;
   gap: 8px;
-  margin: 32px 0 0;
-
-  .logo {
-    height: 18px;
-  }
-
-  a {
-    color: var(--text-h);
-    font-size: 16px;
-    border-radius: 6px;
-    background: var(--social-bg);
-    display: flex;
-    padding: 6px 12px;
-    align-items: center;
-    gap: 8px;
-    text-decoration: none;
-    transition: box-shadow 0.3s;
-
-    &:hover {
-      box-shadow: var(--shadow);
-    }
-    .button-icon {
-      height: 18px;
-      width: 18px;
-    }
-  }
-
-  @media (max-width: 1024px) {
-    margin-top: 20px;
-    flex-wrap: wrap;
-    justify-content: center;
-
-    li {
-      flex: 1 1 calc(50% - 8px);
-    }
-
-    a {
-      width: 100%;
-      justify-content: center;
-      box-sizing: border-box;
-    }
-  }
+  color: #412d15;
+  font-size: 14px;
+  font-weight: 700;
 }
 
-#spacer {
-  height: 88px;
-  border-top: 1px solid var(--border);
-  @media (max-width: 1024px) {
-    height: 48px;
-  }
-}
-
-.ticks {
-  position: relative;
+.field select {
   width: 100%;
+  min-height: 44px;
+  border: 1px solid #d9cfc7;
+  border-radius: 6px;
+  background: #f9f8f6;
+  color: #1f150c;
+  font: inherit;
+  padding: 0 12px;
+}
 
-  &::before,
-  &::after {
-    content: '';
-    position: absolute;
-    top: -4.5px;
-    border: 5px solid transparent;
+/* メインボタン、サブボタン、詳細リンクの共通設定 */
+.primary-button,
+.secondary-button,
+.shop-actions a {
+  min-height: 44px;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.primary-button {
+  border: 1px solid #1f150c;
+  background: #1f150c;
+  color: #f9f8f6;
+}
+
+.primary-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.secondary-button {
+  border: 1px solid #c9b59c;
+  background: #efe9e3;
+  color: #1f150c;
+}
+
+/* 現在地取得の状態メッセージ */
+.location-message {
+  margin: 2px 0 0;
+  color: #5f4a35;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+.location-message.error {
+  color: #8a2f18;
+}
+
+/* カテゴリ一覧と詳細一覧の横幅、余白 */
+.category-section,
+.detail-section {
+  width: min(1120px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 28px 0 44px;
+}
+
+.detail-section {
+  scroll-margin-top: 24px;
+}
+
+/* セクションの見出し */
+.section-heading {
+  margin-bottom: 22px;
+}
+
+/* 取得位置などの補足情報 */
+.section-note {
+  margin: 10px 0 0;
+  color: #7b4f26;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.section-heading h2 {
+  font-size: 32px;
+}
+
+/* ご当地料理カテゴリのカード一覧 */
+.category-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+/* カード全体をクリックできるカテゴリボタン */
+.category-card {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+  width: 100%;
+  min-height: 0;
+  padding: 18px;
+  border: 1px solid #d9cfc7;
+  border-radius: 8px;
+  background: #fffdf8;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+/* 選択中のカテゴリカード */
+.category-card[aria-current='true'] {
+  border-color: #7b4f26;
+  box-shadow: inset 0 0 0 2px rgba(123, 79, 38, 0.18);
+}
+
+.category-card:hover {
+  border-color: #7b4f26;
+  box-shadow: 0 14px 32px rgba(31, 21, 12, 0.12);
+  transform: translateY(-2px);
+}
+
+.category-prefecture,
+.shop-meta {
+  margin: 0 0 8px;
+  color: #7b4f26;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.category-card h3,
+.shop-card h3 {
+  margin: 0 0 10px;
+  color: #1f150c;
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.category-card p,
+.shop-card p,
+.mini-shop span,
+.shop-facts {
+  color: #5f4a35;
+  line-height: 1.65;
+}
+
+/* カテゴリ内に表示する小さな店舗候補 */
+.mini-shop-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.mini-shop {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.mini-shop img,
+.shop-card > img {
+  width: 100%;
+  object-fit: cover;
+  background: #efe9e3;
+}
+
+.mini-shop img {
+  height: 64px;
+  border-radius: 6px;
+}
+
+.mini-shop strong,
+.mini-shop span {
+  display: block;
+}
+
+.mini-shop strong {
+  color: #1f150c;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.mini-shop span {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+/* カテゴリ詳細の店舗一覧 */
+.shop-list {
+  display: grid;
+  gap: 18px;
+}
+
+/* もっと表示ボタンの配置 */
+.more-actions {
+  display: flex;
+  justify-content: center;
+  padding-top: 22px;
+}
+
+.more-actions .secondary-button {
+  min-width: 180px;
+  padding: 0 20px;
+}
+
+/* 店舗詳細カード */
+.shop-card {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid #d9cfc7;
+  border-radius: 8px;
+  background: #fffdf8;
+}
+
+.shop-card > img {
+  height: 100%;
+  min-height: 280px;
+}
+
+/* 店舗カードの本文 */
+.shop-card-body {
+  display: grid;
+  gap: 20px;
+  padding: 22px;
+}
+
+/* アクセスや営業時間などの補足情報 */
+.shop-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0;
+}
+
+.shop-facts div {
+  padding-top: 12px;
+  border-top: 1px solid #efe9e3;
+}
+
+.shop-facts dt {
+  color: #7b4f26;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.shop-facts dd {
+  margin: 4px 0 0;
+}
+
+/* 店舗カード下部のリンクボタン */
+.shop-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.shop-actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  border: 1px solid #c9b59c;
+  color: #1f150c;
+  background: #efe9e3;
+}
+
+/* タブレット幅では1カラム寄りにする */
+@media (max-width: 920px) {
+  .hero-section {
+    grid-template-columns: 1fr;
+    min-height: auto;
+    padding-top: 56px;
   }
 
-  &::before {
-    left: 0;
-    border-left-color: var(--border);
+  .category-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  &::after {
-    right: 0;
-    border-right-color: var(--border);
+
+  .shop-card {
+    grid-template-columns: 1fr;
+  }
+
+  .shop-card > img {
+    height: 260px;
+    min-height: 0;
+  }
+}
+
+/* スマートフォン幅ではカードを縦並びにする */
+@media (max-width: 620px) {
+  .hero-section,
+  .category-section,
+  .detail-section {
+    width: min(100% - 28px, 1120px);
+  }
+
+  .hero-copy h1 {
+    font-size: 40px;
+  }
+
+  .lead {
+    font-size: 16px;
+  }
+
+  .category-grid,
+  .shop-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .category-card {
+    min-height: 0;
   }
 }
