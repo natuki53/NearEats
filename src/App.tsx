@@ -17,6 +17,13 @@ const rangeOptions: RangeOption[] = [
 const demoPrefecture = import.meta.env.VITE_DEMO_PREFECTURE
 const detailPageSize = 7
 
+const findSupportedPrefecture = (prefecture: string) =>
+  localFoodCategories.find(
+    (category) =>
+      category.prefecture === prefecture ||
+      category.prefecture.replace(/[都道府県]$/, '') === prefecture,
+  )?.prefecture ?? prefecture
+
 function App() {
   const detailSectionRef = useRef<HTMLElement | null>(null)
   const [range, setRange] = useState('3')
@@ -86,11 +93,12 @@ function App() {
   const handleLocate = () => {
     // 他県の表示確認用。VITE_DEMO_PREFECTURE があれば現在地取得を使わない
     if (demoPrefecture) {
+      const normalizedPrefecture = findSupportedPrefecture(demoPrefecture)
       const categories = localFoodCategories.filter(
-        (category) => category.prefecture === demoPrefecture,
+        (category) => category.prefecture === normalizedPrefecture,
       )
 
-      setCurrentPrefecture(demoPrefecture)
+      setCurrentPrefecture(normalizedPrefecture)
       setSelectedCategoryId(null)
       setLocationStatus('ready')
 
@@ -99,7 +107,7 @@ function App() {
       }
 
       setLocationMessage(
-        `開発用設定で${demoPrefecture}を表示しています。\n実際の現在地取得は行っていません。`,
+        `開発用設定で${normalizedPrefecture}を表示しています。\n実際の現在地取得は行っていません。`,
       )
       return
     }
@@ -127,11 +135,14 @@ function App() {
         try {
           // 緯度・経度を住所情報に変換し、都道府県を取り出す
           const resolvedLocation = await reverseGeocodeLocation(coordinates)
+          const normalizedPrefecture = findSupportedPrefecture(
+            resolvedLocation.prefecture,
+          )
           const categories = localFoodCategories.filter(
-            (category) => category.prefecture === resolvedLocation.prefecture,
+            (category) => category.prefecture === normalizedPrefecture,
           )
 
-          setCurrentPrefecture(resolvedLocation.prefecture)
+          setCurrentPrefecture(normalizedPrefecture)
           setSelectedCategoryId(null)
           setLocationStatus('ready')
 
@@ -140,7 +151,7 @@ function App() {
           }
 
           setLocationMessage(
-            `現在地を取得しました。\n緯度: ${coordinates.latitude.toFixed(4)} / 経度: ${coordinates.longitude.toFixed(4)}\n判定地域: ${resolvedLocation.prefecture}`,
+            `現在地を取得しました。\n緯度: ${coordinates.latitude.toFixed(4)} / 経度: ${coordinates.longitude.toFixed(4)}\n判定地域: ${normalizedPrefecture}`,
           )
         } catch (error) {
           // 位置は取れても、APIキー未設定や通信失敗で県判定できない場合がある
