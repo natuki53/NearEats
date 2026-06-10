@@ -4,6 +4,19 @@ export type RangeOption = {
   label: string
 }
 
+// 緯度・経度
+export type Coordinates = {
+  latitude: number
+  longitude: number
+}
+
+// 逆ジオコーディング後にアプリ内で使う位置情報
+export type ResolvedLocation = Coordinates & {
+  prefecture: string
+  city?: string
+  displayName: string
+}
+
 // ご当地グルメのカテゴリ情報
 export type LocalFoodCategory = {
   id: string

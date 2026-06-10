@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import './App.css'
 import { localFoodCategories } from './data/localFoods'
 import { mockShops } from './data/mockShops'
+import { reverseGeocodeLocation } from './services/location'
 import type { RangeOption } from './types'
 
 // 検索半径の選択肢
@@ -13,8 +14,6 @@ const rangeOptions: RangeOption[] = [
   { value: '5', label: '3km' },
 ]
 
-// 画面デザイン確認用の仮地域（都道府県判定処理は後で実装）
-const demoPrefecture = '福岡県'
 const detailPageSize = 7
 
 function App() {
@@ -32,13 +31,16 @@ function App() {
   const [locationMessage, setLocationMessage] = useState(
     '現在地を取得すると、ご当地カテゴリを表示します。',
   )
+  const [currentPrefecture, setCurrentPrefecture] = useState<string | null>(null)
 
   const displayedCategories = useMemo(
     () =>
-      localFoodCategories.filter(
-        (category) => category.prefecture === demoPrefecture,
-      ),
-    [],
+      currentPrefecture
+        ? localFoodCategories.filter(
+            (category) => category.prefecture === currentPrefecture,
+          )
+        : [],
+    [currentPrefecture],
   )
 
   // 選択中のカテゴリ検索
@@ -83,6 +85,7 @@ function App() {
   const handleLocate = () => {
     if (!navigator.geolocation) {
       setLocationStatus('error')
+      setCurrentPrefecture(null)
       setSelectedCategoryId(null)
       setLocationMessage(
         '現在地取得を利用できません。通常検索を使用してください。',
@@ -94,15 +97,45 @@ function App() {
     setLocationMessage('現在地を取得しています...')
 
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setLocationStatus('ready')
-        handleSelectCategory(displayedCategories[0]?.id ?? '')
-        setLocationMessage(
-          `現在地を取得しました。\n緯度: ${position.coords.latitude.toFixed(4)} / 経度: ${position.coords.longitude.toFixed(4)}\n今は${demoPrefecture}の仮カテゴリを表示しています。`,
-        )
+      async (position) => {
+        const coordinates = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        }
+
+        try {
+          // 緯度・経度を住所情報に変換し、都道府県を取り出す
+          const resolvedLocation = await reverseGeocodeLocation(coordinates)
+          const categories = localFoodCategories.filter(
+            (category) => category.prefecture === resolvedLocation.prefecture,
+          )
+
+          setCurrentPrefecture(resolvedLocation.prefecture)
+          setSelectedCategoryId(null)
+          setLocationStatus('ready')
+
+          if (categories[0]) {
+            handleSelectCategory(categories[0].id)
+          }
+
+          setLocationMessage(
+            `現在地を取得しました。\n緯度: ${coordinates.latitude.toFixed(4)} / 経度: ${coordinates.longitude.toFixed(4)}\n判定地域: ${resolvedLocation.prefecture}`,
+          )
+        } catch (error) {
+          // 位置は取れても、APIキー未設定や通信失敗で県判定できない場合がある
+          setLocationStatus('error')
+          setCurrentPrefecture(null)
+          setSelectedCategoryId(null)
+          setLocationMessage(
+            error instanceof Error
+              ? error.message
+              : '都道府県を判定できませんでした。通常検索を使用してください。',
+          )
+        }
       },
       () => {
         setLocationStatus('error')
+        setCurrentPrefecture(null)
         setSelectedCategoryId(null)
         setLocationMessage(
           '現在地を取得できませんでした。通常検索を使用してください。',
@@ -165,8 +198,13 @@ function App() {
       {locationStatus === 'ready' ? (
         <section className="category-section" aria-labelledby="local-food-heading">
         <div className="section-heading">
-          <p className="eyebrow">{demoPrefecture}の候補</p>
+          <p className="eyebrow">{currentPrefecture}の候補</p>
           <h2 id="local-food-heading">ご当地料理カテゴリ</h2>
+          {displayedCategories.length === 0 ? (
+            <p className="section-note">
+              この地域のご当地カテゴリは準備中です。通常検索を使用してください。
+            </p>
+          ) : null}
         </div>
 
         {/* カテゴリ一覧 */}
