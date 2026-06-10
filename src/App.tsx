@@ -14,6 +14,7 @@ const rangeOptions: RangeOption[] = [
   { value: '5', label: '3km' },
 ]
 
+const demoPrefecture = import.meta.env.VITE_DEMO_PREFECTURE
 const detailPageSize = 7
 
 function App() {
@@ -83,6 +84,26 @@ function App() {
 
   // 現在地から探すボタンの処理（Geolocation APIが使用できるか確認）
   const handleLocate = () => {
+    // 他県の表示確認用。VITE_DEMO_PREFECTURE があれば現在地取得を使わない
+    if (demoPrefecture) {
+      const categories = localFoodCategories.filter(
+        (category) => category.prefecture === demoPrefecture,
+      )
+
+      setCurrentPrefecture(demoPrefecture)
+      setSelectedCategoryId(null)
+      setLocationStatus('ready')
+
+      if (categories[0]) {
+        handleSelectCategory(categories[0].id)
+      }
+
+      setLocationMessage(
+        `開発用設定で${demoPrefecture}を表示しています。\n実際の現在地取得は行っていません。`,
+      )
+      return
+    }
+
     if (!navigator.geolocation) {
       setLocationStatus('error')
       setCurrentPrefecture(null)
