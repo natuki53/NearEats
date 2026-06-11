@@ -164,11 +164,11 @@
 
 /* カード全体をクリックできるカテゴリボタン */
 .category-card {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 18px;
-  align-content: start;
   width: 100%;
-  min-height: 0;
+  min-height: 360px;
   padding: 18px;
   border: 1px solid #d9cfc7;
   border-radius: 8px;
@@ -223,7 +223,9 @@
 .mini-shop-list {
   display: grid;
   gap: 10px;
-  margin-top: 4px;
+  margin-top: auto;
+  min-height: 138px;
+  align-content: start;
 }
 
 .mini-shop {
@@ -231,6 +233,7 @@
   grid-template-columns: 64px minmax(0, 1fr);
   gap: 10px;
   align-items: center;
+  min-width: 0;
 }
 
 .mini-shop img,
@@ -247,18 +250,23 @@
 
 .mini-shop strong,
 .mini-shop span {
-  display: block;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
 }
 
 .mini-shop strong {
+  -webkit-line-clamp: 2;
   color: #1f150c;
   font-size: 14px;
   line-height: 1.35;
 }
 
 .mini-shop span {
+  -webkit-line-clamp: 2;
   margin-top: 2px;
   font-size: 12px;
+  line-height: 1.45;
 }
 
 /* カテゴリ詳細の店舗一覧 */

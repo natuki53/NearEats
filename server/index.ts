@@ -2,6 +2,7 @@ import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { loadEnvFile } from './env.ts'
 import { sendError, sendJson } from './http.ts'
+import { handleHotPepperSearch } from './routes/hotpepper.ts'
 import { handleReverseLocation } from './routes/location.ts'
 
 const defaultPort = 3001
@@ -34,6 +35,11 @@ const handleRequest = async (
   try {
     if (requestUrl.pathname === '/api/location/reverse') {
       await handleReverseLocation(requestUrl, response)
+      return
+    }
+
+    if (requestUrl.pathname === '/api/hotpepper/search') {
+      await handleHotPepperSearch(requestUrl, response)
       return
     }
 

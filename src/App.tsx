@@ -1,9 +1,10 @@
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { localFoodCategories } from './data/localFoods'
 import { mockShops } from './data/mockShops'
+import { searchHotPepperShops } from './services/hotpepper'
 import { reverseGeocodeLocation } from './services/location'
-import type { RangeOption } from './types'
+import type { Coordinates, LocalFoodCategory, RangeOption, Shop } from './types'
 
 // 検索半径の選択肢
 const rangeOptions: RangeOption[] = [
@@ -15,6 +16,7 @@ const rangeOptions: RangeOption[] = [
 ]
 
 const demoPrefecture = import.meta.env.VITE_DEMO_PREFECTURE
+const useMockShops = import.meta.env.VITE_USE_MOCK_SHOPS === 'true'
 const detailPageSize = 7
 
 const findSupportedPrefecture = (prefecture: string) =>
@@ -39,7 +41,47 @@ function App() {
   const [locationMessage, setLocationMessage] = useState(
     '現在地を取得すると、ご当地カテゴリを表示します。',
   )
+
+  // 現在地から判定した都道府県名
   const [currentPrefecture, setCurrentPrefecture] = useState<string | null>(null)
+
+  // Hot Pepper検索に使う現在地の緯度・経度
+  const [currentCoordinates, setCurrentCoordinates] =
+    useState<Coordinates | null>(null)
+
+  // Hot Pepper APIで取得したカテゴリ詳細用の店舗一覧
+  const [hotPepperShops, setHotPepperShops] = useState<Shop[]>([])
+
+  // Hot Pepper APIで取得したカテゴリカード用の店舗一覧
+  const [featuredApiShops, setFeaturedApiShops] = useState<
+    Record<string, Shop[]>
+  >({})
+  const [featuredSearchStatus, setFeaturedSearchStatus] = useState<
+    'idle' | 'loading' | 'ready' | 'error'
+  >('idle')
+
+  // Hot Pepper API上で条件に一致した全件数
+  const [shopResultsAvailable, setShopResultsAvailable] = useState(0)
+
+  // カテゴリ詳細の店舗検索状態
+  const [shopSearchStatus, setShopSearchStatus] = useState<
+    'idle' | 'loading' | 'ready' | 'error'
+  >('idle')
+  const [shopSearchMessage, setShopSearchMessage] = useState('')
+
+  // カテゴリ切り替えや現在地取得失敗時に、前回の店舗検索結果を消す
+  const resetShopSearch = () => {
+    setHotPepperShops([])
+    setShopResultsAvailable(0)
+    setShopSearchStatus('idle')
+    setShopSearchMessage('')
+  }
+
+  // カテゴリ一覧で使う2件表示用のAPI検索結果を消す
+  const resetFeaturedSearch = () => {
+    setFeaturedApiShops({})
+    setFeaturedSearchStatus('idle')
+  }
 
   const displayedCategories = useMemo(
     () =>
@@ -56,27 +98,165 @@ function App() {
     (category) => category.id === selectedCategoryId,
   )
 
-  // カテゴリごとのおすすめ店舗をまとめる（現在はモックを使用）
+  // カテゴリごとのおすすめ店舗をまとめる
   const featuredShops = useMemo(
     () =>
       displayedCategories.map((category) => ({
         category,
-        shops: mockShops
-          .filter((shop) => shop.categoryId === category.id)
-          .slice(0, 2),
+        shops: currentCoordinates || !useMockShops
+          ? (featuredApiShops[category.id] ?? [])
+          : mockShops
+              .filter((shop) => shop.categoryId === category.id)
+              .slice(0, 2),
       })),
-    [displayedCategories],
+    [currentCoordinates, displayedCategories, featuredApiShops],
   )
 
-  const selectedShops = selectedCategoryId
+  // カテゴリに一致する店舗の表示（モックデータ）
+  const selectedMockShops = selectedCategoryId
     ? mockShops.filter((shop) => shop.categoryId === selectedCategoryId)
     : []
-  const visibleSelectedShops = selectedShops.slice(0, visibleShopCount)
-  const hasMoreSelectedShops = visibleShopCount < selectedShops.length
 
-  const handleSelectCategory = (categoryId: string, shouldScroll = false) => {
+  // 緯度・経度がある場合だけHot Pepper APIの検索結果を使う
+  const isHotPepperSearchEnabled = Boolean(currentCoordinates && selectedCategory)
+
+  // 現在地があるときはHot Pepper、開発用フラグがあるときだけ従来のモックを表示する
+  const selectedShops = isHotPepperSearchEnabled
+    ? hotPepperShops
+    : useMockShops
+      ? selectedMockShops
+      : []
+
+  // モック表示では画面側で件数を増やし、API表示では取得済み一覧をそのまま出す
+  const visibleSelectedShops = isHotPepperSearchEnabled
+    ? selectedShops
+    : selectedShops.slice(0, visibleShopCount)
+
+  // API表示では全件数、モック表示では配列長を見て「もっと表示」を出す
+  const hasMoreSelectedShops = isHotPepperSearchEnabled
+    ? selectedShops.length < shopResultsAvailable
+    : visibleShopCount < selectedShops.length
+
+  // 選択中カテゴリのキーワードで、現在地周辺の店舗をHot Pepper APIから取得する
+  const loadCategoryShops = useCallback(
+    async (
+      category: LocalFoodCategory,
+      start = 1,
+      options?: {
+        coordinates?: Coordinates | null
+        range?: string
+      },
+    ) => {
+      // 現在地取得直後はstate反映前なので、引数の座標を優先して使う
+      const searchCoordinates = options?.coordinates ?? currentCoordinates
+      const searchRange = options?.range ?? range
+
+      if (!searchCoordinates) {
+        return
+      }
+
+      setShopSearchStatus('loading')
+      setShopSearchMessage('店舗情報を取得しています...')
+
+      try {
+        const result = await searchHotPepperShops({
+          coordinates: searchCoordinates,
+          range: searchRange,
+          // 複数キーワードをAND検索にすると絞り込みすぎるため、まず先頭だけ使う
+          keyword: category.keywords[0],
+          categoryId: category.id,
+          start,
+          count: detailPageSize,
+        })
+
+        setHotPepperShops((current) =>
+          start === 1 ? result.shops : [...current, ...result.shops],
+        )
+        setShopResultsAvailable(result.resultsAvailable)
+        setShopSearchStatus('ready')
+        setShopSearchMessage(
+          // 0件の場合はエラーではなく、検索条件を変える案内として扱う
+          result.resultsAvailable === 0
+            ? 'このカテゴリの店舗が見つかりませんでした。検索半径を広げてください。'
+            : `${result.resultsAvailable}件の候補が見つかりました。`,
+        )
+      } catch (error) {
+        setHotPepperShops([])
+        setShopResultsAvailable(0)
+        setShopSearchStatus('error')
+        setShopSearchMessage(
+          error instanceof Error
+            ? error.message
+            : '店舗情報を取得できませんでした。',
+        )
+      }
+    },
+    [currentCoordinates, range],
+  )
+
+  // ご当地カテゴリカード内に表示する店舗候補を、カテゴリごとに2件ずつ取得する
+  const loadFeaturedCategoryShops = useCallback(
+    async (
+      categories: LocalFoodCategory[],
+      options?: {
+        coordinates?: Coordinates | null
+        range?: string
+      },
+    ) => {
+      const searchCoordinates = options?.coordinates ?? currentCoordinates
+      const searchRange = options?.range ?? range
+
+      if (!searchCoordinates || categories.length === 0) {
+        resetFeaturedSearch()
+        return
+      }
+
+      setFeaturedSearchStatus('loading')
+
+      try {
+        const results = await Promise.all(
+          categories.map(async (category) => {
+            const result = await searchHotPepperShops({
+              coordinates: searchCoordinates,
+              range: searchRange,
+              // カテゴリカードも絞り込みすぎないよう、まず先頭キーワードで探す
+              keyword: category.keywords[0],
+              categoryId: category.id,
+              start: 1,
+              count: 2,
+            })
+
+            return [category.id, result.shops] as const
+          }),
+        )
+
+        setFeaturedApiShops(Object.fromEntries(results))
+        setFeaturedSearchStatus('ready')
+      } catch {
+        resetFeaturedSearch()
+        setFeaturedSearchStatus('error')
+      }
+    },
+    [currentCoordinates, range],
+  )
+
+  const handleSelectCategory = (
+    categoryId: string,
+    shouldScroll = false,
+    coordinatesOverride?: Coordinates | null,
+  ) => {
+    const category = localFoodCategories.find((item) => item.id === categoryId)
+
+    // 現在地取得成功直後はstate反映前なので、渡された座標を優先する
+    const searchCoordinates = coordinatesOverride ?? currentCoordinates
+
+    resetShopSearch()
     setSelectedCategoryId(categoryId)
     setVisibleShopCount(detailPageSize)
+
+    if (category && searchCoordinates) {
+      void loadCategoryShops(category, 1, { coordinates: searchCoordinates })
+    }
 
     // カテゴリ詳細まで自動スクロール
     if (shouldScroll) {
@@ -86,6 +266,21 @@ function App() {
           block: 'start',
         })
       })
+    }
+  }
+
+  const handleRangeChange = (nextRange: string) => {
+    setRange(nextRange)
+
+    // 検索半径を変えたら、選択中カテゴリの店舗を取り直す
+    if (selectedCategory && currentCoordinates) {
+      resetShopSearch()
+      void loadCategoryShops(selectedCategory, 1, { range: nextRange })
+    }
+
+    if (displayedCategories.length > 0 && currentCoordinates) {
+      resetFeaturedSearch()
+      void loadFeaturedCategoryShops(displayedCategories, { range: nextRange })
     }
   }
 
@@ -99,7 +294,10 @@ function App() {
       )
 
       setCurrentPrefecture(normalizedPrefecture)
+      setCurrentCoordinates(null)
       setSelectedCategoryId(null)
+      resetShopSearch()
+      resetFeaturedSearch()
       setLocationStatus('ready')
 
       if (categories[0]) {
@@ -115,7 +313,10 @@ function App() {
     if (!navigator.geolocation) {
       setLocationStatus('error')
       setCurrentPrefecture(null)
+      setCurrentCoordinates(null)
       setSelectedCategoryId(null)
+      resetShopSearch()
+      resetFeaturedSearch()
       setLocationMessage(
         '現在地取得を利用できません。通常検索を使用してください。',
       )
@@ -143,11 +344,16 @@ function App() {
           )
 
           setCurrentPrefecture(normalizedPrefecture)
+          setCurrentCoordinates(coordinates)
           setSelectedCategoryId(null)
+          resetShopSearch()
+          resetFeaturedSearch()
           setLocationStatus('ready')
 
+          void loadFeaturedCategoryShops(categories, { coordinates })
+
           if (categories[0]) {
-            handleSelectCategory(categories[0].id)
+            handleSelectCategory(categories[0].id, false, coordinates)
           }
 
           setLocationMessage(
@@ -157,7 +363,10 @@ function App() {
           // 位置は取れても、APIキー未設定や通信失敗で県判定できない場合がある
           setLocationStatus('error')
           setCurrentPrefecture(null)
+          setCurrentCoordinates(null)
           setSelectedCategoryId(null)
+          resetShopSearch()
+          resetFeaturedSearch()
           setLocationMessage(
             error instanceof Error
               ? error.message
@@ -168,7 +377,10 @@ function App() {
       () => {
         setLocationStatus('error')
         setCurrentPrefecture(null)
+        setCurrentCoordinates(null)
         setSelectedCategoryId(null)
+        resetShopSearch()
+        resetFeaturedSearch()
         setLocationMessage(
           '現在地を取得できませんでした。通常検索を使用してください。',
         )
@@ -196,7 +408,10 @@ function App() {
         <form className="search-panel">
           <label className="field">
             <span>検索半径</span>
-            <select value={range} onChange={(event) => setRange(event.target.value)}>
+            <select
+              value={range}
+              onChange={(event) => handleRangeChange(event.target.value)}
+            >
               {rangeOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -236,6 +451,9 @@ function App() {
             <p className="section-note">
               この地域のご当地カテゴリは準備中です。通常検索を使用してください。
             </p>
+          ) : null}
+          {featuredSearchStatus === 'loading' ? (
+            <p className="section-note">カテゴリ別の店舗候補を取得しています...</p>
           ) : null}
         </div>
 
@@ -284,6 +502,11 @@ function App() {
         <div className="section-heading">
           <p className="eyebrow">カテゴリ詳細</p>
           <h2 id="detail-heading">{selectedCategory?.name}</h2>
+          {shopSearchMessage ? (
+            <p className={`section-note ${shopSearchStatus}`}>
+              {shopSearchMessage}
+            </p>
+          ) : null}
         </div>
 
         {/* カテゴリに一致する店舗の表示（7件） */}
@@ -335,11 +558,21 @@ function App() {
             <button
               className="secondary-button"
               type="button"
-              onClick={() =>
+              disabled={shopSearchStatus === 'loading'}
+              onClick={() => {
+                if (isHotPepperSearchEnabled && selectedCategory) {
+                  // Hot Pepper APIはstartが1始まりなので、取得済み件数+1から次を読む
+                  void loadCategoryShops(
+                    selectedCategory,
+                    selectedShops.length + 1,
+                  )
+                  return
+                }
+
                 setVisibleShopCount((current) => current + detailPageSize)
-              }
+              }}
             >
-              もっと表示
+              {shopSearchStatus === 'loading' ? '取得中...' : 'もっと表示'}
             </button>
           </div>
         ) : null}
