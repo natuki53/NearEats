@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { localFoodCategories } from './data/localFoods'
+import { demoLocationsByPrefecture } from './data/demoLocations'
 import { mockShops } from './data/mockShops'
 import { searchHotPepperShops } from './services/hotpepper'
 import { reverseGeocodeLocation } from './services/location'
@@ -289,23 +290,34 @@ function App() {
     // 他県の表示確認用。VITE_DEMO_PREFECTURE があれば現在地取得を使わない
     if (demoPrefecture) {
       const normalizedPrefecture = findSupportedPrefecture(demoPrefecture)
+
+      // 現在地取得なしでもAPI検索を試せるよう、都道府県ごとの代表地点を使う
+      const demoLocation = demoLocationsByPrefecture[normalizedPrefecture]
       const categories = localFoodCategories.filter(
         (category) => category.prefecture === normalizedPrefecture,
       )
 
       setCurrentPrefecture(normalizedPrefecture)
-      setCurrentCoordinates(null)
+      setCurrentCoordinates(demoLocation ?? null)
       setSelectedCategoryId(null)
       resetShopSearch()
       resetFeaturedSearch()
       setLocationStatus('ready')
 
+      // 代表地点がある場合は、その座標でカテゴリカード用の店舗候補を取得する
+      if (demoLocation) {
+        void loadFeaturedCategoryShops(categories, { coordinates: demoLocation })
+      }
+
       if (categories[0]) {
-        handleSelectCategory(categories[0].id)
+        // 代表地点がある場合は、最初のカテゴリ詳細もHot Pepper APIで取得する
+        handleSelectCategory(categories[0].id, false, demoLocation)
       }
 
       setLocationMessage(
-        `開発用設定で${normalizedPrefecture}を表示しています。\n実際の現在地取得は行っていません。`,
+        demoLocation
+          ? `開発用設定で${normalizedPrefecture}を表示しています。\n代表地点: ${demoLocation.label}\n実際の現在地取得は行っていません。`
+          : `開発用設定で${normalizedPrefecture}を表示しています。\n代表地点が未設定のため、店舗検索は行いません。`,
       )
       return
     }
