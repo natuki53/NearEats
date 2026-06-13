@@ -5,7 +5,13 @@ import { demoLocationsByPrefecture } from './data/demoLocations'
 import { mockShops } from './data/mockShops'
 import { searchHotPepperShops } from './services/hotpepper'
 import { reverseGeocodeLocation } from './services/location'
-import type { Coordinates, LocalFoodCategory, RangeOption, Shop } from './types'
+import type {
+  Coordinates,
+  LocalFoodCategory,
+  NormalSearchFilters,
+  RangeOption,
+  Shop,
+} from './types'
 
 // 検索半径の選択肢
 const rangeOptions: RangeOption[] = [
@@ -15,6 +21,49 @@ const rangeOptions: RangeOption[] = [
   { value: '4', label: '2km' },
   { value: '5', label: '3km' },
 ]
+
+// 通常検索で選びやすいよう、よく使うジャンルだけを用意する
+const genreOptions = [
+  { value: '', label: '指定なし' },
+  { value: 'G001', label: '居酒屋' },
+  { value: 'G004', label: '和食' },
+  { value: 'G005', label: '洋食' },
+  { value: 'G006', label: 'イタリアン・フレンチ' },
+  { value: 'G007', label: '中華' },
+  { value: 'G008', label: '焼肉・ホルモン' },
+  { value: 'G013', label: 'ラーメン' },
+  { value: 'G014', label: 'カフェ・スイーツ' },
+]
+
+// まず使いやすい代表的な予算だけを選択肢にする
+const budgetOptions = [
+  { value: '', label: '指定なし' },
+  { value: 'B001', label: '〜2000円' },
+  { value: 'B002', label: '2001〜3000円' },
+  { value: 'B003', label: '3001〜4000円' },
+]
+
+const normalCheckboxOptions: {
+  key: 'privateRoom' | 'nonSmoking' | 'english' | 'card' | 'lunch'
+  label: string
+}[] = [
+  { key: 'privateRoom', label: '個室あり' },
+  { key: 'nonSmoking', label: '禁煙席あり' },
+  { key: 'english', label: '英語メニューあり' },
+  { key: 'card', label: 'カード可' },
+  { key: 'lunch', label: 'ランチあり' },
+]
+
+const initialNormalFilters: NormalSearchFilters = {
+  keyword: '',
+  genre: '',
+  budget: '',
+  privateRoom: false,
+  nonSmoking: false,
+  english: false,
+  card: false,
+  lunch: false,
+}
 
 const demoPrefecture = import.meta.env.VITE_DEMO_PREFECTURE
 const useMockShops = import.meta.env.VITE_USE_MOCK_SHOPS === 'true'
@@ -29,11 +78,15 @@ const findSupportedPrefecture = (prefecture: string) =>
 
 function App() {
   const detailSectionRef = useRef<HTMLElement | null>(null)
+  const normalSectionRef = useRef<HTMLElement | null>(null)
+  const [searchMode, setSearchMode] = useState<'local' | 'normal'>('local')
   const [range, setRange] = useState('3')
   const [visibleShopCount, setVisibleShopCount] = useState(detailPageSize)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
     null,
   )
+  const [normalFilters, setNormalFilters] =
+    useState<NormalSearchFilters>(initialNormalFilters)
 
   // 現在位置の取得状態
   const [locationStatus, setLocationStatus] = useState<
@@ -70,6 +123,14 @@ function App() {
   >('idle')
   const [shopSearchMessage, setShopSearchMessage] = useState('')
 
+  // 通常検索の結果と通信状態。ご当地カテゴリ検索とは別に持つ
+  const [normalShops, setNormalShops] = useState<Shop[]>([])
+  const [normalResultsAvailable, setNormalResultsAvailable] = useState(0)
+  const [normalSearchStatus, setNormalSearchStatus] = useState<
+    'idle' | 'loading' | 'ready' | 'error'
+  >('idle')
+  const [normalSearchMessage, setNormalSearchMessage] = useState('')
+
   // カテゴリ切り替えや現在地取得失敗時に、前回の店舗検索結果を消す
   const resetShopSearch = () => {
     setHotPepperShops([])
@@ -82,6 +143,14 @@ function App() {
   const resetFeaturedSearch = () => {
     setFeaturedApiShops({})
     setFeaturedSearchStatus('idle')
+  }
+
+  // 通常検索の条件を変えて再検索するとき、前回の結果を残さない
+  const resetNormalSearch = () => {
+    setNormalShops([])
+    setNormalResultsAvailable(0)
+    setNormalSearchStatus('idle')
+    setNormalSearchMessage('')
   }
 
   const displayedCategories = useMemo(
@@ -138,6 +207,8 @@ function App() {
     ? selectedShops.length < shopResultsAvailable
     : visibleShopCount < selectedShops.length
 
+  const hasMoreNormalShops = normalShops.length < normalResultsAvailable
+
   // 選択中カテゴリのキーワードで、現在地周辺の店舗をHot Pepper APIから取得する
   const loadCategoryShops = useCallback(
     async (
@@ -193,6 +264,60 @@ function App() {
       }
     },
     [currentCoordinates, range],
+  )
+
+  // ユーザーが入力した条件で、現在地周辺の店舗を検索する
+  const loadNormalSearchShops = useCallback(
+    async (start = 1) => {
+      if (!currentCoordinates) {
+        setNormalSearchStatus('error')
+        setNormalSearchMessage(
+          '通常検索には現在地が必要です。先に現在地を取得してください。',
+        )
+        return
+      }
+
+      setNormalSearchStatus('loading')
+      setNormalSearchMessage('通常検索の店舗情報を取得しています...')
+
+      try {
+        const result = await searchHotPepperShops({
+          coordinates: currentCoordinates,
+          range,
+          keyword: normalFilters.keyword,
+          genre: normalFilters.genre,
+          budget: normalFilters.budget,
+          privateRoom: normalFilters.privateRoom,
+          nonSmoking: normalFilters.nonSmoking,
+          english: normalFilters.english,
+          card: normalFilters.card,
+          lunch: normalFilters.lunch,
+          start,
+          count: detailPageSize,
+        })
+
+        setNormalShops((current) =>
+          start === 1 ? result.shops : [...current, ...result.shops],
+        )
+        setNormalResultsAvailable(result.resultsAvailable)
+        setNormalSearchStatus('ready')
+        setNormalSearchMessage(
+          result.resultsAvailable === 0
+            ? '条件に合う店舗が見つかりませんでした。検索半径を広げるか、条件を減らしてください。'
+            : `${result.resultsAvailable}件の候補が見つかりました。`,
+        )
+      } catch (error) {
+        setNormalShops([])
+        setNormalResultsAvailable(0)
+        setNormalSearchStatus('error')
+        setNormalSearchMessage(
+          error instanceof Error
+            ? error.message
+            : '通常検索の店舗情報を取得できませんでした。',
+        )
+      }
+    },
+    [currentCoordinates, normalFilters, range],
   )
 
   // ご当地カテゴリカード内に表示する店舗候補を、カテゴリごとに2件ずつ取得する
@@ -272,6 +397,7 @@ function App() {
 
   const handleRangeChange = (nextRange: string) => {
     setRange(nextRange)
+    resetNormalSearch()
 
     // 検索半径を変えたら、選択中カテゴリの店舗を取り直す
     if (selectedCategory && currentCoordinates) {
@@ -283,6 +409,29 @@ function App() {
       resetFeaturedSearch()
       void loadFeaturedCategoryShops(displayedCategories, { range: nextRange })
     }
+  }
+
+  const handleNormalFilterChange = <Key extends keyof NormalSearchFilters>(
+    key: Key,
+    value: NormalSearchFilters[Key],
+  ) => {
+    setNormalFilters((current) => ({
+      ...current,
+      [key]: value,
+    }))
+    resetNormalSearch()
+  }
+
+  const handleNormalSearch = () => {
+    // 検索条件を変えたあとの初回検索なので、必ず1件目から取得する
+    void loadNormalSearchShops(1)
+
+    window.requestAnimationFrame(() => {
+      normalSectionRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    })
   }
 
   // 現在地から探すボタンの処理（Geolocation APIが使用できるか確認）
@@ -302,6 +451,7 @@ function App() {
       setSelectedCategoryId(null)
       resetShopSearch()
       resetFeaturedSearch()
+      resetNormalSearch()
       setLocationStatus('ready')
 
       // 代表地点がある場合は、その座標でカテゴリカード用の店舗候補を取得する
@@ -329,6 +479,7 @@ function App() {
       setSelectedCategoryId(null)
       resetShopSearch()
       resetFeaturedSearch()
+      resetNormalSearch()
       setLocationMessage(
         '現在地取得を利用できません。通常検索を使用してください。',
       )
@@ -360,6 +511,7 @@ function App() {
           setSelectedCategoryId(null)
           resetShopSearch()
           resetFeaturedSearch()
+          resetNormalSearch()
           setLocationStatus('ready')
 
           void loadFeaturedCategoryShops(categories, { coordinates })
@@ -379,6 +531,7 @@ function App() {
           setSelectedCategoryId(null)
           resetShopSearch()
           resetFeaturedSearch()
+          resetNormalSearch()
           setLocationMessage(
             error instanceof Error
               ? error.message
@@ -393,6 +546,7 @@ function App() {
         setSelectedCategoryId(null)
         resetShopSearch()
         resetFeaturedSearch()
+        resetNormalSearch()
         setLocationMessage(
           '現在地を取得できませんでした。通常検索を使用してください。',
         )
@@ -417,7 +571,7 @@ function App() {
         </div>
 
         {/* 検索半径を指定するプルダウン */}
-        <form className="search-panel">
+        <form className="search-panel" onSubmit={(event) => event.preventDefault()}>
           <label className="field">
             <span>検索半径</span>
             <select
@@ -442,8 +596,18 @@ function App() {
             {locationStatus === 'loading' ? '取得中...' : '現在地から探す'}
           </button>
 
-          <button className="secondary-button" type="button">
-            通常検索に切り替える
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() =>
+              setSearchMode((current) =>
+                current === 'normal' ? 'local' : 'normal',
+              )
+            }
+          >
+            {searchMode === 'normal'
+              ? 'ご当地カテゴリに戻る'
+              : '通常検索に切り替える'}
           </button>
 
           {/* 現在地の状態 */}
@@ -453,8 +617,168 @@ function App() {
         </form>
       </section>
 
+      {searchMode === 'normal' ? (
+        <section
+          className="category-section"
+          aria-labelledby="normal-search-heading"
+          ref={normalSectionRef}
+        >
+          <div className="section-heading">
+            <p className="eyebrow">通常検索</p>
+            <h2 id="normal-search-heading">条件を指定して探す</h2>
+          </div>
+
+          {/* 通常検索の条件入力。ご当地カテゴリ一覧と同じ位置に表示する */}
+          <div className="normal-search-form">
+            <label className="field">
+              <span>キーワード</span>
+              <input
+                type="search"
+                value={normalFilters.keyword}
+                placeholder="ラーメン、海鮮、店名など"
+                onChange={(event) =>
+                  handleNormalFilterChange('keyword', event.target.value)
+                }
+              />
+            </label>
+
+            <label className="field">
+              <span>ジャンル</span>
+              <select
+                value={normalFilters.genre}
+                onChange={(event) =>
+                  handleNormalFilterChange('genre', event.target.value)
+                }
+              >
+                {genreOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="field">
+              <span>予算</span>
+              <select
+                value={normalFilters.budget}
+                onChange={(event) =>
+                  handleNormalFilterChange('budget', event.target.value)
+                }
+              >
+                {budgetOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="checkbox-grid">
+              {normalCheckboxOptions.map((option) => (
+                <label className="checkbox-field" key={option.key}>
+                  <input
+                    type="checkbox"
+                    checked={normalFilters[option.key]}
+                    onChange={(event) =>
+                      handleNormalFilterChange(
+                        option.key,
+                        event.target.checked,
+                      )
+                    }
+                  />
+                  <span>{option.label}</span>
+                </label>
+              ))}
+            </div>
+
+            <div className="normal-search-actions">
+              <button
+                className="primary-button"
+                type="button"
+                onClick={handleNormalSearch}
+                disabled={normalSearchStatus === 'loading'}
+              >
+                {normalSearchStatus === 'loading' ? '検索中...' : '検索する'}
+              </button>
+            </div>
+          </div>
+
+          {normalSearchStatus !== 'idle' ? (
+            <div className="section-heading normal-result-heading">
+              <p className="eyebrow">検索結果</p>
+              <h2>検索結果</h2>
+              {normalSearchMessage ? (
+                <p className={`section-note ${normalSearchStatus}`}>
+                  {normalSearchMessage}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="shop-list">
+            {normalShops.map((shop) => (
+              <article className="shop-card" key={shop.id}>
+                <img src={shop.imageUrl} alt={`${shop.name}の料理写真`} />
+                <div className="shop-card-body">
+                  <div>
+                    <p className="shop-meta">
+                      {shop.genre} / {shop.budget}
+                    </p>
+                    <h3>{shop.name}</h3>
+                    <p>{shop.catchCopy}</p>
+                  </div>
+
+                  <dl className="shop-facts">
+                    <div>
+                      <dt>アクセス</dt>
+                      <dd>{shop.access}</dd>
+                    </div>
+                    <div>
+                      <dt>営業時間</dt>
+                      <dd>{shop.open}</dd>
+                    </div>
+                  </dl>
+
+                  <div className="shop-actions">
+                    <a href={shop.hotPepperUrl} target="_blank" rel="noreferrer">
+                      ホットペッパーで見る
+                    </a>
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                        shop.address,
+                      )}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      地図で開く
+                    </a>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          {hasMoreNormalShops ? (
+            <div className="more-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={normalSearchStatus === 'loading'}
+                onClick={() => {
+                  // Hot Pepper APIはstartが1始まりなので、取得済み件数+1から次を読む
+                  void loadNormalSearchShops(normalShops.length + 1)
+                }}
+              >
+                {normalSearchStatus === 'loading' ? '取得中...' : 'もっと表示'}
+              </button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
       {/* 現在位置を取得できたときのみカテゴリを表示 */}
-      {locationStatus === 'ready' ? (
+      {searchMode === 'local' && locationStatus === 'ready' ? (
         <section className="category-section" aria-labelledby="local-food-heading">
         <div className="section-heading">
           <p className="eyebrow">{currentPrefecture}の候補</p>
@@ -505,7 +829,7 @@ function App() {
       ) : null}
 
       {/* カテゴリが選択されている場合のみ表示 */}
-      {selectedCategory ? (
+      {searchMode === 'local' && selectedCategory ? (
         <section
           className="detail-section"
           aria-labelledby="detail-heading"

@@ -26,6 +26,18 @@ export type LocalFoodCategory = {
   keywords: string[]
 }
 
+// 通常検索でユーザーが指定する条件
+export type NormalSearchFilters = {
+  keyword: string
+  genre: string
+  budget: string
+  privateRoom: boolean
+  nonSmoking: boolean
+  english: boolean
+  card: boolean
+  lunch: boolean
+}
+
 // 店舗情報
 export type Shop = {
   id: string

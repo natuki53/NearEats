@@ -73,6 +73,7 @@
   font-weight: 700;
 }
 
+.field input,
 .field select {
   width: 100%;
   min-height: 44px;
@@ -82,6 +83,53 @@
   color: #1f150c;
   font: inherit;
   padding: 0 12px;
+}
+
+/* 通常検索の追加条件。検索パネル内で読みやすい間隔にする */
+.normal-search-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+  padding: 18px;
+  border: 1px solid #d9cfc7;
+  border-radius: 8px;
+  background: #fffdf8;
+}
+
+/* チェック条件は増えすぎないよう、2列でコンパクトに並べる */
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  grid-column: 1 / -1;
+}
+
+.checkbox-field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: #412d15;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.checkbox-field input {
+  width: 16px;
+  height: 16px;
+  accent-color: #1f150c;
+}
+
+.normal-search-actions {
+  display: flex;
+  justify-content: flex-end;
+  grid-column: 1 / -1;
+}
+
+.normal-search-actions .primary-button {
+  min-width: 180px;
+  padding: 0 20px;
 }
 
 /* メインボタン、サブボタン、詳細リンクの共通設定 */
@@ -153,6 +201,10 @@
 
 .section-heading h2 {
   font-size: 32px;
+}
+
+.normal-result-heading {
+  margin-top: 6px;
 }
 
 /* ご当地料理カテゴリのカード一覧 */
@@ -361,6 +413,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .normal-search-form {
+    grid-template-columns: 1fr;
+  }
+
   .shop-card {
     grid-template-columns: 1fr;
   }
@@ -388,7 +444,8 @@
   }
 
   .category-grid,
-  .shop-facts {
+  .shop-facts,
+  .checkbox-grid {
     grid-template-columns: 1fr;
   }
 
