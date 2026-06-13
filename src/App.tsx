@@ -140,6 +140,9 @@ const initialNormalFilters: NormalSearchFilters = {
 const demoPrefecture = import.meta.env.VITE_DEMO_PREFECTURE
 const useMockShops = import.meta.env.VITE_USE_MOCK_SHOPS === 'true'
 const detailPageSize = 7
+const getPageStart = (page: number) => (page - 1) * detailPageSize + 1
+const getPageCount = (total: number) =>
+  Math.max(1, Math.ceil(total / detailPageSize))
 
 const findSupportedPrefecture = (prefecture: string) =>
   localFoodCategories.find(
@@ -153,7 +156,7 @@ function App() {
   const normalSectionRef = useRef<HTMLElement | null>(null)
   const [searchMode, setSearchMode] = useState<'local' | 'normal'>('local')
   const [range, setRange] = useState('3')
-  const [visibleShopCount, setVisibleShopCount] = useState(detailPageSize)
+  const [selectedShopPage, setSelectedShopPage] = useState(1)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
     null,
   )
@@ -200,7 +203,8 @@ function App() {
   // 通常検索の結果と通信状態。ご当地カテゴリ検索とは別に持つ
   const [normalShops, setNormalShops] = useState<Shop[]>([])
   const [normalResultsAvailable, setNormalResultsAvailable] = useState(0)
-  // 通常検索でも、フォールバック後の「もっと表示」が同じ半径を使えるように保持する
+  const [normalPage, setNormalPage] = useState(1)
+  // 通常検索でも、フォールバック後のページ移動が同じ半径を使えるように保持する
   const [normalSearchRange, setNormalSearchRange] = useState<string | null>(null)
   const [normalSearchStatus, setNormalSearchStatus] = useState<
     'idle' | 'loading' | 'ready' | 'error'
@@ -212,6 +216,7 @@ function App() {
     setHotPepperShops([])
     setShopResultsAvailable(0)
     setShopSearchRange(null)
+    setSelectedShopPage(1)
     setShopSearchStatus('idle')
     setShopSearchMessage('')
   }
@@ -227,6 +232,7 @@ function App() {
     setNormalShops([])
     setNormalResultsAvailable(0)
     setNormalSearchRange(null)
+    setNormalPage(1)
     setNormalSearchStatus('idle')
     setNormalSearchMessage('')
   }
@@ -276,32 +282,37 @@ function App() {
       : []
 
   // モック表示では画面側で件数を増やし、API表示では取得済み一覧をそのまま出す
+  const selectedShopTotal = isHotPepperSearchEnabled
+    ? shopResultsAvailable
+    : selectedShops.length
+  const selectedShopPageCount = getPageCount(selectedShopTotal)
+  const selectedShopPageStart = (selectedShopPage - 1) * detailPageSize
   const visibleSelectedShops = isHotPepperSearchEnabled
     ? selectedShops
-    : selectedShops.slice(0, visibleShopCount)
+    : selectedShops.slice(
+        selectedShopPageStart,
+        selectedShopPageStart + detailPageSize,
+      )
 
-  // API表示では全件数、モック表示では配列長を見て「もっと表示」を出す
-  const hasMoreSelectedShops = isHotPepperSearchEnabled
-    ? selectedShops.length < shopResultsAvailable
-    : visibleShopCount < selectedShops.length
-
-  const hasMoreNormalShops = normalShops.length < normalResultsAvailable
+  // API表示では全件数、モック表示では配列長を見てページ数を出す
+  const normalPageCount = getPageCount(normalResultsAvailable)
 
   // 選択中カテゴリのキーワードで、現在地周辺の店舗をHot Pepper APIから取得する
   const loadCategoryShops = useCallback(
     async (
       category: LocalFoodCategory,
-      start = 1,
+      page = 1,
       options?: {
         coordinates?: Coordinates | null
         range?: string
+        shouldScroll?: boolean
       },
     ) => {
       // 現在地取得直後はstate反映前なので、引数の座標を優先して使う
       const searchCoordinates = options?.coordinates ?? currentCoordinates
       const requestedRange = options?.range ?? range
       const searchRange =
-        start === 1 ? requestedRange : (shopSearchRange ?? requestedRange)
+        page === 1 ? requestedRange : (shopSearchRange ?? requestedRange)
 
       if (!searchCoordinates) {
         return
@@ -318,16 +329,23 @@ function App() {
             // 複数キーワードをAND検索にすると絞り込みすぎるため、まず先頭だけ使う
             keyword: category.keywords[0],
             categoryId: category.id,
-            start,
+            start: getPageStart(page),
             count: detailPageSize,
           })
 
-        setHotPepperShops((current) =>
-          start === 1 ? result.shops : [...current, ...result.shops],
-        )
+        setHotPepperShops(result.shops)
         setShopResultsAvailable(result.resultsAvailable)
         setShopSearchRange(effectiveRange)
+        setSelectedShopPage(page)
         setShopSearchStatus('ready')
+        if (options?.shouldScroll) {
+          window.requestAnimationFrame(() => {
+            detailSectionRef.current?.scrollIntoView({
+              behavior: 'smooth',
+              block: 'start',
+            })
+          })
+        }
         setShopSearchMessage(
           // 0件の場合はエラーではなく、検索条件を変える案内として扱う
           result.resultsAvailable === 0
@@ -352,7 +370,7 @@ function App() {
 
   // ユーザーが入力した条件で、現在地周辺の店舗を検索する
   const loadNormalSearchShops = useCallback(
-    async (start = 1) => {
+    async (page = 1, options?: { shouldScroll?: boolean }) => {
       if (!currentCoordinates) {
         setNormalSearchStatus('error')
         setNormalSearchMessage(
@@ -361,7 +379,7 @@ function App() {
         return
       }
 
-      const searchRange = start === 1 ? range : (normalSearchRange ?? range)
+      const searchRange = page === 1 ? range : (normalSearchRange ?? range)
 
       setNormalSearchStatus('loading')
       setNormalSearchMessage('通常検索の店舗情報を取得しています...')
@@ -379,16 +397,23 @@ function App() {
             english: normalFilters.english,
             card: normalFilters.card,
             lunch: normalFilters.lunch,
-            start,
+            start: getPageStart(page),
             count: detailPageSize,
           })
 
-        setNormalShops((current) =>
-          start === 1 ? result.shops : [...current, ...result.shops],
-        )
+        setNormalShops(result.shops)
         setNormalResultsAvailable(result.resultsAvailable)
         setNormalSearchRange(effectiveRange)
+        setNormalPage(page)
         setNormalSearchStatus('ready')
+        if (options?.shouldScroll) {
+          window.requestAnimationFrame(() => {
+            normalSectionRef.current?.scrollIntoView({
+              behavior: 'smooth',
+              block: 'start',
+            })
+          })
+        }
         setNormalSearchMessage(
           result.resultsAvailable === 0
             ? '条件に合う店舗が見つかりませんでした。検索半径を広げるか、条件を減らしてください。'
@@ -468,7 +493,7 @@ function App() {
 
     resetShopSearch()
     setSelectedCategoryId(categoryId)
-    setVisibleShopCount(detailPageSize)
+    setSelectedShopPage(1)
 
     if (category && searchCoordinates) {
       void loadCategoryShops(category, 1, { coordinates: searchCoordinates })
@@ -649,6 +674,95 @@ function App() {
     )
   }
 
+  const normalPagination =
+    normalResultsAvailable > detailPageSize ? (
+      <nav className="pagination" aria-label="検索結果のページ移動">
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={normalSearchStatus === 'loading' || normalPage <= 1}
+          onClick={() => {
+            void loadNormalSearchShops(normalPage - 1, { shouldScroll: true })
+          }}
+        >
+          前へ
+        </button>
+        <span className="pagination-status">
+          {normalPage} / {normalPageCount}
+        </span>
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={
+            normalSearchStatus === 'loading' || normalPage >= normalPageCount
+          }
+          onClick={() => {
+            void loadNormalSearchShops(normalPage + 1, { shouldScroll: true })
+          }}
+        >
+          次へ
+        </button>
+      </nav>
+    ) : null
+
+  const selectedShopPagination =
+    selectedShopTotal > detailPageSize ? (
+      <nav className="pagination" aria-label="店舗結果のページ移動">
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={shopSearchStatus === 'loading' || selectedShopPage <= 1}
+          onClick={() => {
+            if (isHotPepperSearchEnabled && selectedCategory) {
+              void loadCategoryShops(selectedCategory, selectedShopPage - 1, {
+                shouldScroll: true,
+              })
+              return
+            }
+
+            setSelectedShopPage((current) => current - 1)
+            window.requestAnimationFrame(() => {
+              detailSectionRef.current?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start',
+              })
+            })
+          }}
+        >
+          前へ
+        </button>
+        <span className="pagination-status">
+          {selectedShopPage} / {selectedShopPageCount}
+        </span>
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={
+            shopSearchStatus === 'loading' ||
+            selectedShopPage >= selectedShopPageCount
+          }
+          onClick={() => {
+            if (isHotPepperSearchEnabled && selectedCategory) {
+              void loadCategoryShops(selectedCategory, selectedShopPage + 1, {
+                shouldScroll: true,
+              })
+              return
+            }
+
+            setSelectedShopPage((current) => current + 1)
+            window.requestAnimationFrame(() => {
+              detailSectionRef.current?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start',
+              })
+            })
+          }}
+        >
+          次へ
+        </button>
+      </nav>
+    ) : null
+
   return (
     <main className="app-shell">
       <section className="hero-section">
@@ -806,6 +920,8 @@ function App() {
             </div>
           ) : null}
 
+          {normalPagination}
+
           <div className="shop-list">
             {normalShops.map((shop) => (
               <article className="shop-card" key={shop.id}>
@@ -849,21 +965,7 @@ function App() {
             ))}
           </div>
 
-          {hasMoreNormalShops ? (
-            <div className="more-actions">
-              <button
-                className="secondary-button"
-                type="button"
-                disabled={normalSearchStatus === 'loading'}
-                onClick={() => {
-                  // Hot Pepper APIはstartが1始まりなので、取得済み件数+1から次を読む
-                  void loadNormalSearchShops(normalShops.length + 1)
-                }}
-              >
-                {normalSearchStatus === 'loading' ? '取得中...' : 'もっと表示'}
-              </button>
-            </div>
-          ) : null}
+          {normalPagination}
         </section>
       ) : null}
 
@@ -935,6 +1037,8 @@ function App() {
           ) : null}
         </div>
 
+        {selectedShopPagination}
+
         {/* カテゴリに一致する店舗の表示（7件） */}
         <div className="shop-list">
           {visibleSelectedShops.map((shop) => (
@@ -979,29 +1083,7 @@ function App() {
           ))}
         </div>
 
-        {hasMoreSelectedShops ? (
-          <div className="more-actions">
-            <button
-              className="secondary-button"
-              type="button"
-              disabled={shopSearchStatus === 'loading'}
-              onClick={() => {
-                if (isHotPepperSearchEnabled && selectedCategory) {
-                  // Hot Pepper APIはstartが1始まりなので、取得済み件数+1から次を読む
-                  void loadCategoryShops(
-                    selectedCategory,
-                    selectedShops.length + 1,
-                  )
-                  return
-                }
-
-                setVisibleShopCount((current) => current + detailPageSize)
-              }}
-            >
-              {shopSearchStatus === 'loading' ? '取得中...' : 'もっと表示'}
-            </button>
-          </div>
-        ) : null}
+        {selectedShopPagination}
       </section>
       ) : null}
     </main>

@@ -327,16 +327,26 @@
   gap: 18px;
 }
 
-/* もっと表示ボタンの配置 */
-.more-actions {
+/* ページングボタンの配置 */
+.pagination {
   display: flex;
+  align-items: center;
   justify-content: center;
-  padding-top: 22px;
+  gap: 14px;
+  margin: 24px 0;
 }
 
-.more-actions .secondary-button {
-  min-width: 180px;
-  padding: 0 20px;
+.pagination .secondary-button {
+  min-width: 108px;
+  padding: 0 18px;
+}
+
+.pagination-status {
+  min-width: 72px;
+  color: #5d4037;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
 }
 
 /* 店舗詳細カード */
