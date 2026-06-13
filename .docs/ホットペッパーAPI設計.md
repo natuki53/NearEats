@@ -33,6 +33,7 @@ Hot Pepper API の API キーは、サーバー側の `.env` に `HOTPEPPER_API_
 | `start` | 検索開始位置。Hot Pepper API は `1` 始まり |
 | `count` | 取得件数 |
 | `order` | 並び順。初期値は `4` |
+| `id` | 店舗詳細取得用の店舗ID |
 
 ## Hot Pepper APIへ送る主な検索条件
 `server/routes/hotpepper.ts` では、フロントエンドから受け取った条件に加えて、サーバー側で以下を付与する。
@@ -67,6 +68,13 @@ export type Shop = {
   catchCopy: string
   imageUrl: string
   open: string
+  close?: string
+  privateRoom?: string
+  nonSmoking?: string
+  card?: string
+  parking?: string
+  wifi?: string
+  couponUrl?: string
   hotPepperUrl: string
 }
 ```
@@ -87,6 +95,13 @@ export type Shop = {
 | `catchCopy` | `shop.catch` | 店舗説明として使う |
 | `imageUrl` | `shop.photo.pc.l` など | 大きい画像から優先して使う |
 | `open` | `shop.open` | 営業時間 |
+| `close` | `shop.close` | 定休日 |
+| `privateRoom` | `shop.private_room` | 個室情報 |
+| `nonSmoking` | `shop.non_smoking` | 禁煙席情報 |
+| `card` | `shop.card` | カード利用可否 |
+| `parking` | `shop.parking` | 駐車場情報 |
+| `wifi` | `shop.wifi` | Wi-Fi情報 |
+| `couponUrl` | `shop.coupon_urls.pc` | クーポンページへのリンク |
 | `hotPepperUrl` | `shop.urls.pc` | Hot Pepper公式ページへのリンク |
 
 画像は以下の優先順で使う。
@@ -96,6 +111,28 @@ export type Shop = {
 3. `shop.photo.mobile.l`
 4. `shop.photo.mobile.s`
 5. 取得できない場合は空文字
+
+## 店舗詳細取得
+店舗カードの「詳細を見る」を押した場合は、店舗IDを使って同じ API プロキシに問い合わせる。
+
+```text
+/api/hotpepper/search?id=店舗ID
+```
+
+サーバー側では `id` を Hot Pepper API へ引き継ぎ、対象店舗の詳細情報を取得する。
+取得したレスポンスは一覧検索と同じ `Shop` 型、または詳細用の `ShopDetail` 型に変換して返す。
+
+詳細画面では、一覧で表示している項目に加えて、以下のような来店判断に役立つ情報を表示する。
+
+- 定休日
+- 個室
+- 禁煙席
+- カード可
+- 駐車場
+- Wi-Fi
+- クーポンURL
+
+詳細取得に失敗した場合は、一覧検索で保持している店舗情報を使って、最低限の詳細モーダルを表示する。
 
 ## 表示件数
 カテゴリごとに取得件数を変える。
