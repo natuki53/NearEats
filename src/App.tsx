@@ -3,7 +3,11 @@ import './App.css'
 import { localFoodCategories } from './data/localFoods'
 import { demoLocationsByPrefecture } from './data/demoLocations'
 import { mockShops } from './data/mockShops'
-import { searchHotPepperShops } from './services/hotpepper'
+import {
+  searchHotPepperShops,
+  type HotPepperSearchParams,
+  type HotPepperSearchResult,
+} from './services/hotpepper'
 import { reverseGeocodeLocation } from './services/location'
 import type {
   Coordinates,
@@ -13,7 +17,8 @@ import type {
   Shop,
 } from './types'
 
-// 検索半径の選択肢
+// Hot Pepper APIのrange検索で使える半径。現APIでは3kmが上限なので、
+// それ以上の距離はこのフォールバック検索では扱わない。
 const rangeOptions: RangeOption[] = [
   { value: '1', label: '300m' },
   { value: '2', label: '500m' },
@@ -21,6 +26,73 @@ const rangeOptions: RangeOption[] = [
   { value: '4', label: '2km' },
   { value: '5', label: '3km' },
 ]
+
+const getRangeLabel = (value: string) =>
+  rangeOptions.find((option) => option.value === value)?.label ?? value
+
+// 指定された半径より広い検索半径だけを、近い順に返す。
+// 例: 1km(value: 3)指定なら、2km(value: 4) -> 3km(value: 5)の順で再検索する。
+const getWiderRangeValues = (currentRange: string) => {
+  const currentIndex = rangeOptions.findIndex(
+    (option) => option.value === currentRange,
+  )
+
+  if (currentIndex === -1) {
+    return []
+  }
+
+  return rangeOptions.slice(currentIndex + 1).map((option) => option.value)
+}
+
+const getExpandedRangeMessage = (
+  requestedRange: string,
+  effectiveRange: string,
+) =>
+  `${getRangeLabel(requestedRange)}圏内では見つかりませんでしたが、少し範囲を広げると${getRangeLabel(effectiveRange)}圏内に条件に合う候補がありました。`
+
+type SearchWithFallbackResult = {
+  result: HotPepperSearchResult
+  range: string
+  isFallback: boolean
+}
+
+const searchWithRangeFallback = async (
+  params: HotPepperSearchParams,
+): Promise<SearchWithFallbackResult> => {
+  const result = await searchHotPepperShops(params)
+
+  // 1ページ目で0件だったときだけ、指定半径より広い範囲を近い順に試す。
+  // 2ページ目以降は、採用済みの検索半径の続きを取得するだけにして重複を防ぐ。
+  if (result.resultsAvailable > 0 || params.start !== 1) {
+    return {
+      result,
+      range: params.range,
+      isFallback: false,
+    }
+  }
+
+  for (const widerRange of getWiderRangeValues(params.range)) {
+    const widerResult = await searchHotPepperShops({
+      ...params,
+      range: widerRange,
+      start: 1,
+    })
+
+    if (widerResult.resultsAvailable > 0) {
+      return {
+        result: widerResult,
+        range: widerRange,
+        isFallback: true,
+      }
+    }
+  }
+
+  return {
+    result,
+    range: params.range,
+    isFallback: false,
+  }
+}
 
 // 通常検索で選びやすいよう、よく使うジャンルだけを用意する
 const genreOptions = [
@@ -116,6 +188,8 @@ function App() {
 
   // Hot Pepper API上で条件に一致した全件数
   const [shopResultsAvailable, setShopResultsAvailable] = useState(0)
+  // 0件時に広い範囲へフォールバックした場合、続きを同じ半径で取得するために保持する
+  const [shopSearchRange, setShopSearchRange] = useState<string | null>(null)
 
   // カテゴリ詳細の店舗検索状態
   const [shopSearchStatus, setShopSearchStatus] = useState<
@@ -126,6 +200,8 @@ function App() {
   // 通常検索の結果と通信状態。ご当地カテゴリ検索とは別に持つ
   const [normalShops, setNormalShops] = useState<Shop[]>([])
   const [normalResultsAvailable, setNormalResultsAvailable] = useState(0)
+  // 通常検索でも、フォールバック後の「もっと表示」が同じ半径を使えるように保持する
+  const [normalSearchRange, setNormalSearchRange] = useState<string | null>(null)
   const [normalSearchStatus, setNormalSearchStatus] = useState<
     'idle' | 'loading' | 'ready' | 'error'
   >('idle')
@@ -135,6 +211,7 @@ function App() {
   const resetShopSearch = () => {
     setHotPepperShops([])
     setShopResultsAvailable(0)
+    setShopSearchRange(null)
     setShopSearchStatus('idle')
     setShopSearchMessage('')
   }
@@ -149,6 +226,7 @@ function App() {
   const resetNormalSearch = () => {
     setNormalShops([])
     setNormalResultsAvailable(0)
+    setNormalSearchRange(null)
     setNormalSearchStatus('idle')
     setNormalSearchMessage('')
   }
@@ -221,7 +299,9 @@ function App() {
     ) => {
       // 現在地取得直後はstate反映前なので、引数の座標を優先して使う
       const searchCoordinates = options?.coordinates ?? currentCoordinates
-      const searchRange = options?.range ?? range
+      const requestedRange = options?.range ?? range
+      const searchRange =
+        start === 1 ? requestedRange : (shopSearchRange ?? requestedRange)
 
       if (!searchCoordinates) {
         return
@@ -231,26 +311,30 @@ function App() {
       setShopSearchMessage('店舗情報を取得しています...')
 
       try {
-        const result = await searchHotPepperShops({
-          coordinates: searchCoordinates,
-          range: searchRange,
-          // 複数キーワードをAND検索にすると絞り込みすぎるため、まず先頭だけ使う
-          keyword: category.keywords[0],
-          categoryId: category.id,
-          start,
-          count: detailPageSize,
-        })
+        const { result, range: effectiveRange, isFallback } =
+          await searchWithRangeFallback({
+            coordinates: searchCoordinates,
+            range: searchRange,
+            // 複数キーワードをAND検索にすると絞り込みすぎるため、まず先頭だけ使う
+            keyword: category.keywords[0],
+            categoryId: category.id,
+            start,
+            count: detailPageSize,
+          })
 
         setHotPepperShops((current) =>
           start === 1 ? result.shops : [...current, ...result.shops],
         )
         setShopResultsAvailable(result.resultsAvailable)
+        setShopSearchRange(effectiveRange)
         setShopSearchStatus('ready')
         setShopSearchMessage(
           // 0件の場合はエラーではなく、検索条件を変える案内として扱う
           result.resultsAvailable === 0
             ? 'このカテゴリの店舗が見つかりませんでした。検索半径を広げてください。'
-            : `${result.resultsAvailable}件の候補が見つかりました。`,
+            : isFallback || effectiveRange !== requestedRange
+              ? getExpandedRangeMessage(requestedRange, effectiveRange)
+              : `${result.resultsAvailable}件の候補が見つかりました。`,
         )
       } catch (error) {
         setHotPepperShops([])
@@ -263,7 +347,7 @@ function App() {
         )
       }
     },
-    [currentCoordinates, range],
+    [currentCoordinates, range, shopSearchRange],
   )
 
   // ユーザーが入力した条件で、現在地周辺の店舗を検索する
@@ -277,34 +361,40 @@ function App() {
         return
       }
 
+      const searchRange = start === 1 ? range : (normalSearchRange ?? range)
+
       setNormalSearchStatus('loading')
       setNormalSearchMessage('通常検索の店舗情報を取得しています...')
 
       try {
-        const result = await searchHotPepperShops({
-          coordinates: currentCoordinates,
-          range,
-          keyword: normalFilters.keyword,
-          genre: normalFilters.genre,
-          budget: normalFilters.budget,
-          privateRoom: normalFilters.privateRoom,
-          nonSmoking: normalFilters.nonSmoking,
-          english: normalFilters.english,
-          card: normalFilters.card,
-          lunch: normalFilters.lunch,
-          start,
-          count: detailPageSize,
-        })
+        const { result, range: effectiveRange, isFallback } =
+          await searchWithRangeFallback({
+            coordinates: currentCoordinates,
+            range: searchRange,
+            keyword: normalFilters.keyword,
+            genre: normalFilters.genre,
+            budget: normalFilters.budget,
+            privateRoom: normalFilters.privateRoom,
+            nonSmoking: normalFilters.nonSmoking,
+            english: normalFilters.english,
+            card: normalFilters.card,
+            lunch: normalFilters.lunch,
+            start,
+            count: detailPageSize,
+          })
 
         setNormalShops((current) =>
           start === 1 ? result.shops : [...current, ...result.shops],
         )
         setNormalResultsAvailable(result.resultsAvailable)
+        setNormalSearchRange(effectiveRange)
         setNormalSearchStatus('ready')
         setNormalSearchMessage(
           result.resultsAvailable === 0
             ? '条件に合う店舗が見つかりませんでした。検索半径を広げるか、条件を減らしてください。'
-            : `${result.resultsAvailable}件の候補が見つかりました。`,
+            : isFallback || effectiveRange !== range
+              ? getExpandedRangeMessage(range, effectiveRange)
+              : `${result.resultsAvailable}件の候補が見つかりました。`,
         )
       } catch (error) {
         setNormalShops([])
@@ -317,7 +407,7 @@ function App() {
         )
       }
     },
-    [currentCoordinates, normalFilters, range],
+    [currentCoordinates, normalFilters, normalSearchRange, range],
   )
 
   // ご当地カテゴリカード内に表示する店舗候補を、カテゴリごとに2件ずつ取得する
