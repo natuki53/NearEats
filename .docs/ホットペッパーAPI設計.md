@@ -74,7 +74,6 @@ export type Shop = {
   card?: string
   parking?: string
   wifi?: string
-  couponUrl?: string
   hotPepperUrl: string
 }
 ```
@@ -101,7 +100,6 @@ export type Shop = {
 | `card` | `shop.card` | カード利用可否 |
 | `parking` | `shop.parking` | 駐車場情報 |
 | `wifi` | `shop.wifi` | Wi-Fi情報 |
-| `couponUrl` | `shop.coupon_urls.pc` | クーポンページへのリンク |
 | `hotPepperUrl` | `shop.urls.pc` | Hot Pepper公式ページへのリンク |
 
 画像は以下の優先順で使う。
@@ -130,7 +128,6 @@ export type Shop = {
 - カード可
 - 駐車場
 - Wi-Fi
-- クーポンURL
 
 詳細取得に失敗した場合は、一覧検索で保持している店舗情報を使って、最低限の詳細モーダルを表示する。
 
