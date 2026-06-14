@@ -135,7 +135,10 @@
 /* メインボタン、サブボタン、詳細リンクの共通設定 */
 .primary-button,
 .secondary-button,
-.shop-actions a {
+.shop-actions a,
+.shop-actions button,
+.shop-modal-actions a,
+.shop-modal-close {
   min-height: 44px;
   border-radius: 6px;
   font: inherit;
@@ -401,7 +404,8 @@
   gap: 10px;
 }
 
-.shop-actions a {
+.shop-actions a,
+.shop-actions button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -409,6 +413,211 @@
   border: 1px solid #c9b59c;
   color: #1f150c;
   background: #efe9e3;
+}
+
+.shop-actions button {
+  appearance: none;
+}
+
+/* 店舗詳細モーダル。検索結果の位置を保ったまま詳細を確認できるようにする */
+.shop-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(31, 21, 12, 0.48);
+}
+
+.shop-modal {
+  width: min(920px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid #d9cfc7;
+  border-radius: 8px;
+  background: #fffdf8;
+  box-shadow: 0 24px 70px rgba(31, 21, 12, 0.28);
+}
+
+.shop-modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px 28px 18px;
+  border-bottom: 1px solid #efe9e3;
+  background: #fffdf8;
+}
+
+.shop-modal-header h2 {
+  margin: 0;
+  color: #1f150c;
+  font-size: 26px;
+  line-height: 1.25;
+}
+
+.shop-modal-close {
+  flex: 0 0 auto;
+  width: 44px;
+  border: 1px solid #c9b59c;
+  background: #efe9e3;
+  color: #1f150c;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.shop-detail-message {
+  margin: 0;
+  padding: 14px 28px 0;
+  color: #7b4f26;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.shop-detail-message.error {
+  color: #8a2f18;
+}
+
+.shop-modal-content {
+  display: grid;
+  gap: 24px;
+  padding: 24px 28px;
+}
+
+.shop-modal-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.95fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.shop-modal-photo,
+.shop-modal-map,
+.shop-modal-detail {
+  min-width: 0;
+}
+
+.shop-modal-photo > img,
+.shop-modal-image-placeholder {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #efe9e3;
+}
+
+.shop-modal-image-placeholder {
+  display: grid;
+  place-items: center;
+  color: #7b4f26;
+  font-weight: 700;
+}
+
+.shop-detail-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 24px;
+  margin: 0;
+  color: #5f4a35;
+}
+
+.shop-detail-facts div {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid #efe9e3;
+}
+
+.shop-detail-facts dt,
+.shop-modal-label {
+  color: #7b4f26;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.shop-detail-facts dd {
+  margin: 0;
+  line-height: 1.65;
+}
+
+/* 詳細APIで取得した設備情報。空の項目は表示せず、判断材料だけを小さく並べる */
+.shop-feature-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.shop-feature-chip {
+  display: inline-grid;
+  gap: 3px;
+  min-width: 108px;
+  padding: 9px 10px;
+  border: 1px solid #efe9e3;
+  border-radius: 6px;
+  background: #f9f8f6;
+  color: #5f4a35;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.shop-feature-chip strong {
+  color: #7b4f26;
+}
+
+.shop-modal-label {
+  margin: 0 0 8px;
+}
+
+.shop-modal-catch-block {
+  margin-top: 14px;
+}
+
+.shop-modal-catch {
+  margin: 0;
+  color: #1f150c;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.shop-modal-map iframe {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  min-height: 0;
+  border: 0;
+  border-radius: 8px;
+  background: #efe9e3;
+}
+
+.shop-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 0 28px 28px;
+}
+
+.shop-modal-actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  border: 1px solid #c9b59c;
+  color: #1f150c;
+  background: #efe9e3;
+  text-decoration: none;
+}
+
+.shop-modal-actions a:first-child {
+  border-color: #1f150c;
+  background: #1f150c;
+  color: #f9f8f6;
 }
 
 /* タブレット幅では1カラム寄りにする */
@@ -435,6 +644,15 @@
     height: 260px;
     min-height: 0;
   }
+
+  .shop-modal-top,
+  .shop-detail-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .shop-modal-map iframe {
+    min-height: 260px;
+  }
 }
 
 /* スマートフォン幅ではカードを縦並びにする */
@@ -455,11 +673,35 @@
 
   .category-grid,
   .shop-facts,
+  .shop-detail-facts div,
   .checkbox-grid {
     grid-template-columns: 1fr;
   }
 
   .category-card {
     min-height: 0;
+  }
+
+  .shop-modal-backdrop {
+    padding: 14px;
+  }
+
+  .shop-modal-header,
+  .shop-modal-content,
+  .shop-modal-actions {
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+
+  .shop-modal-header h2 {
+    font-size: 22px;
+  }
+
+  .shop-modal-actions {
+    justify-content: stretch;
+  }
+
+  .shop-modal-actions a {
+    flex: 1 1 160px;
   }
 }

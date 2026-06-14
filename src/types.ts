@@ -50,5 +50,12 @@ export type Shop = {
   catchCopy: string
   imageUrl: string
   open: string
+  // 詳細モーダルで使う追加情報。Hot Pepper APIに値がない店舗もあるため任意項目にする
+  close?: string
+  privateRoom?: string
+  nonSmoking?: string
+  card?: string
+  parking?: string
+  wifi?: string
   hotPepperUrl: string
 }

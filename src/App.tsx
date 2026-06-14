@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { localFoodCategories } from './data/localFoods'
 import { demoLocationsByPrefecture } from './data/demoLocations'
 import { mockShops } from './data/mockShops'
 import {
+  fetchHotPepperShopDetail,
   searchHotPepperShops,
   type HotPepperSearchParams,
   type HotPepperSearchResult,
@@ -54,6 +55,11 @@ type SearchWithFallbackResult = {
   result: HotPepperSearchResult
   range: string
   isFallback: boolean
+}
+
+type ShopFeatureItem = {
+  label: string
+  value: string
 }
 
 const searchWithRangeFallback = async (
@@ -144,6 +150,28 @@ const getPageStart = (page: number) => (page - 1) * detailPageSize + 1
 const getPageCount = (total: number) =>
   Math.max(1, Math.ceil(total / detailPageSize))
 
+const getMapQuery = (shop: Shop) =>
+  [shop.name, shop.address].filter(Boolean).join(' ')
+
+const getGoogleMapsSearchUrl = (shop: Shop) =>
+  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+    getMapQuery(shop),
+  )}`
+
+const getGoogleMapEmbedUrl = (shop: Shop) =>
+  `https://www.google.com/maps?q=${encodeURIComponent(
+    getMapQuery(shop),
+  )}&output=embed`
+
+const getShopFeatureItems = (shop: Shop): ShopFeatureItem[] =>
+  [
+    { label: '個室', value: shop.privateRoom },
+    { label: '禁煙席', value: shop.nonSmoking },
+    { label: 'カード', value: shop.card },
+    { label: '駐車場', value: shop.parking },
+    { label: 'Wi-Fi', value: shop.wifi },
+  ].filter((item): item is ShopFeatureItem => Boolean(item.value?.trim()))
+
 const findSupportedPrefecture = (prefecture: string) =>
   localFoodCategories.find(
     (category) =>
@@ -211,8 +239,27 @@ function App() {
   >('idle')
   const [normalSearchMessage, setNormalSearchMessage] = useState('')
 
+  // 一覧から選ばれた店舗。詳細APIが失敗した場合も、この情報でモーダルを表示する
+  const [selectedShop, setSelectedShop] = useState<Shop | null>(null)
+  // 店舗IDで取り直した詳細情報。定休日や設備など、一覧より多い項目をここに入れる
+  const [selectedShopDetail, setSelectedShopDetail] = useState<Shop | null>(
+    null,
+  )
+  const [shopDetailStatus, setShopDetailStatus] = useState<
+    'idle' | 'loading' | 'ready' | 'error'
+  >('idle')
+  const [shopDetailMessage, setShopDetailMessage] = useState('')
+
+  const resetShopDetail = () => {
+    setSelectedShop(null)
+    setSelectedShopDetail(null)
+    setShopDetailStatus('idle')
+    setShopDetailMessage('')
+  }
+
   // カテゴリ切り替えや現在地取得失敗時に、前回の店舗検索結果を消す
   const resetShopSearch = () => {
+    resetShopDetail()
     setHotPepperShops([])
     setShopResultsAvailable(0)
     setShopSearchRange(null)
@@ -229,6 +276,7 @@ function App() {
 
   // 通常検索の条件を変えて再検索するとき、前回の結果を残さない
   const resetNormalSearch = () => {
+    resetShopDetail()
     setNormalShops([])
     setNormalResultsAvailable(0)
     setNormalSearchRange(null)
@@ -296,6 +344,35 @@ function App() {
 
   // API表示では全件数、モック表示では配列長を見てページ数を出す
   const normalPageCount = getPageCount(normalResultsAvailable)
+
+  // 詳細APIの結果があれば優先し、失敗時は一覧で選んだ店舗情報を使う
+  const detailShop = selectedShopDetail ?? selectedShop
+  const shopFeatureItems = useMemo(
+    () => (detailShop ? getShopFeatureItems(detailShop) : []),
+    [detailShop],
+  )
+
+  useEffect(() => {
+    if (!selectedShop) {
+      return undefined
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        resetShopDetail()
+      }
+    }
+
+    // モーダル表示中は背景側がスクロールしないようにする
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.body.style.overflow = originalOverflow
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [selectedShop])
 
   // 選択中カテゴリのキーワードで、現在地周辺の店舗をHot Pepper APIから取得する
   const loadCategoryShops = useCallback(
@@ -547,6 +624,41 @@ function App() {
         block: 'start',
       })
     })
+  }
+
+  const handleSelectShop = async (shop: Shop) => {
+    // まず一覧にある情報でモーダルを開き、そのあと詳細APIの結果で表示を上書きする
+    setSelectedShop(shop)
+    setSelectedShopDetail(null)
+    setShopDetailMessage('')
+
+    if (!shop.id) {
+      setShopDetailStatus('error')
+      setShopDetailMessage('店舗IDがないため、一覧の情報だけを表示しています。')
+      return
+    }
+
+    setShopDetailStatus('loading')
+    setShopDetailMessage('店舗詳細を取得しています...')
+
+    try {
+      const detail = await fetchHotPepperShopDetail(shop.id)
+
+      setSelectedShopDetail({
+        ...detail,
+        // 詳細取得ではカテゴリIDを渡さないため、一覧側のカテゴリIDを引き継ぐ
+        categoryId: detail.categoryId || shop.categoryId,
+      })
+      setShopDetailStatus('ready')
+      setShopDetailMessage('')
+    } catch (error) {
+      setShopDetailStatus('error')
+      setShopDetailMessage(
+        error instanceof Error
+          ? `${error.message} 一覧の情報だけを表示しています。`
+          : '店舗詳細を取得できませんでした。一覧の情報だけを表示しています。',
+      )
+    }
   }
 
   // 現在地から探すボタンの処理（Geolocation APIが使用できるか確認）
@@ -803,11 +915,12 @@ function App() {
           <button
             className="secondary-button"
             type="button"
-            onClick={() =>
+            onClick={() => {
+              resetShopDetail()
               setSearchMode((current) =>
                 current === 'normal' ? 'local' : 'normal',
               )
-            }
+            }}
           >
             {searchMode === 'normal'
               ? 'ご当地カテゴリに戻る'
@@ -947,16 +1060,18 @@ function App() {
                   </dl>
 
                   <div className="shop-actions">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleSelectShop(shop)
+                      }}
+                    >
+                      詳細を見る
+                    </button>
                     <a href={shop.hotPepperUrl} target="_blank" rel="noreferrer">
                       ホットペッパーで見る
                     </a>
-                    <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                        shop.address,
-                      )}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
+                    <a href={getGoogleMapsSearchUrl(shop)} target="_blank" rel="noreferrer">
                       地図で開く
                     </a>
                   </div>
@@ -1065,16 +1180,18 @@ function App() {
                 </dl>
 
                 <div className="shop-actions">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleSelectShop(shop)
+                    }}
+                  >
+                    詳細を見る
+                  </button>
                   <a href={shop.hotPepperUrl} target="_blank" rel="noreferrer">
                     ホットペッパーで見る
                   </a>
-                  <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                      shop.address,
-                    )}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
+                  <a href={getGoogleMapsSearchUrl(shop)} target="_blank" rel="noreferrer">
                     地図で開く
                   </a>
                 </div>
@@ -1085,6 +1202,131 @@ function App() {
 
         {selectedShopPagination}
       </section>
+      ) : null}
+
+      {detailShop ? (
+        <div className="shop-modal-backdrop" onClick={resetShopDetail}>
+          <section
+            className="shop-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="shop-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="shop-modal-header">
+              <div>
+                <p className="eyebrow">店舗詳細</p>
+                <h2 id="shop-modal-title">{detailShop.name}</h2>
+              </div>
+              <button
+                className="shop-modal-close"
+                type="button"
+                aria-label="店舗詳細を閉じる"
+                onClick={resetShopDetail}
+              >
+                ×
+              </button>
+            </header>
+
+            {shopDetailMessage ? (
+              <p className={`shop-detail-message ${shopDetailStatus}`}>
+                {shopDetailMessage}
+              </p>
+            ) : null}
+
+            <div className="shop-modal-content">
+              <div className="shop-modal-top">
+                <div className="shop-modal-photo">
+                  {/* 上段左側は店舗画像。右側の地図と同じ高さになるようCSSでそろえる */}
+                {detailShop.imageUrl ? (
+                  <img src={detailShop.imageUrl} alt={`${detailShop.name}の料理写真`} />
+                ) : (
+                  <div className="shop-modal-image-placeholder">画像なし</div>
+                )}
+
+                  <div className="shop-modal-catch-block">
+                    <p className="shop-modal-label">キャッチコピー</p>
+                    <p className="shop-modal-catch">
+                      {detailShop.catchCopy || '店舗の詳しい紹介文はありません。'}
+                    </p>
+                  </div>
+                </div>
+
+                {detailShop.address ? (
+                  <div className="shop-modal-map">
+                    {/* APIキー不要のGoogle Maps埋め込みURL。住所から周辺地図を表示する */}
+                    <iframe
+                      title={`${detailShop.name}の地図`}
+                      src={getGoogleMapEmbedUrl(detailShop)}
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                    />
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="shop-modal-detail">
+                {/* 課題の詳細画面必須項目と、来店判断に使う情報をまとめて表示する */}
+                <dl className="shop-detail-facts">
+                  <div>
+                    <dt>住所</dt>
+                    <dd>{detailShop.address || '情報なし'}</dd>
+                  </div>
+                  <div>
+                    <dt>営業時間</dt>
+                    <dd>{detailShop.open || '情報なし'}</dd>
+                  </div>
+                  {detailShop.close ? (
+                    <div>
+                      <dt>定休日</dt>
+                      <dd>{detailShop.close}</dd>
+                    </div>
+                  ) : null}
+                  <div>
+                    <dt>アクセス</dt>
+                    <dd>{detailShop.access || '情報なし'}</dd>
+                  </div>
+                  <div>
+                    <dt>ジャンル / 予算</dt>
+                    <dd>
+                      {[detailShop.genre, detailShop.budget]
+                        .filter(Boolean)
+                        .join(' / ') || '情報なし'}
+                    </dd>
+                  </div>
+                </dl>
+
+                {shopFeatureItems.length > 0 ? (
+                  <div className="shop-feature-list" aria-label="店舗設備">
+                    {shopFeatureItems.map((item) => (
+                      <span className="shop-feature-chip" key={item.label}>
+                        <strong>{item.label}</strong>
+                        {item.value}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="shop-modal-actions">
+              {detailShop.hotPepperUrl ? (
+                <a href={detailShop.hotPepperUrl} target="_blank" rel="noreferrer">
+                  ホットペッパーで見る
+                </a>
+              ) : null}
+              {detailShop.address ? (
+                <a
+                  href={getGoogleMapsSearchUrl(detailShop)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  地図で開く
+                </a>
+              ) : null}
+            </div>
+          </section>
+        </div>
       ) : null}
     </main>
   )

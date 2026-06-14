@@ -109,3 +109,29 @@ export const searchHotPepperShops = async ({
   // 画面で使いやすいShop型に変換済みの結果を受け取る
   return (await response.json()) as HotPepperSearchResult
 }
+
+export const fetchHotPepperShopDetail = async (id: string): Promise<Shop> => {
+  // 詳細モーダルでは、一覧より多い項目を表示するため店舗IDで1件だけ取り直す
+  const searchParams = new URLSearchParams({
+    id,
+    start: '1',
+    count: '1',
+  })
+
+  const response = await fetch(`/api/hotpepper/search?${searchParams}`)
+
+  if (!response.ok) {
+    const errorData = (await response.json().catch(() => ({}))) as ApiErrorResponse
+
+    throw new Error(errorData.error ?? '店舗詳細を取得できませんでした。')
+  }
+
+  const result = (await response.json()) as HotPepperSearchResult
+  const shop = result.shops[0]
+
+  if (!shop) {
+    throw new Error('店舗詳細が見つかりませんでした。')
+  }
+
+  return shop
+}

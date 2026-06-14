@@ -26,6 +26,12 @@ type HotPepperShop = {
     }
   }
   open?: string
+  close?: string
+  private_room?: string
+  non_smoking?: string
+  card?: string
+  parking?: string
+  wifi?: string
   urls?: {
     pc?: string
   }
@@ -88,6 +94,12 @@ const mapHotPepperShop = (shop: HotPepperShop, categoryId: string): Shop => ({
     shop.photo?.mobile?.s ??
     '',
   open: shop.open ?? '',
+  close: shop.close ?? '',
+  privateRoom: shop.private_room ?? '',
+  nonSmoking: shop.non_smoking ?? '',
+  card: shop.card ?? '',
+  parking: shop.parking ?? '',
+  wifi: shop.wifi ?? '',
   hotPepperUrl: shop.urls?.pc ?? '',
 })
 
@@ -116,6 +128,7 @@ export const handleHotPepperSearch = async (
     'order',
     'start',
     'count',
+    'id',
     'genre',
     'budget',
   ]) {
